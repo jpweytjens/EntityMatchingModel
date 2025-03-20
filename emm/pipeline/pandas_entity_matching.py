@@ -43,7 +43,9 @@ from emm.pipeline.base_entity_matching import BaseEntityMatching
 from emm.preprocessing.base_name_preprocessor import AbstractPreprocessor
 from emm.preprocessing.pandas_preprocessor import PandasPreprocessor
 from emm.supervised_model.base_supervised_model import BaseSupervisedModel, train_model
-from emm.supervised_model.pandas_supervised_model import PandasSupervisedLayerTransformer
+from emm.supervised_model.pandas_supervised_model import (
+    PandasSupervisedLayerTransformer,
+)
 
 if TYPE_CHECKING:
     from sklearn.base import TransformerMixin
@@ -68,8 +70,11 @@ class PandasEntityMatching(BaseEntityMatching):
         return_sm_features: bool | None = None,
         supervised_model_object: Pipeline | None = None,
         aggregation_layer: bool | None = None,
-        aggregation_method: Literal["mean_score", "max_frequency_nm_score"] | None = None,
+        aggregation_method: Literal["mean_score", "max_frequency_nm_score"]
+        | None = None,
         carry_on_cols: list[str] | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
         **kwargs,
     ) -> None:
         """Implementation of EntityMatching using Pandas dataframes as a data format.
@@ -101,6 +106,8 @@ class PandasEntityMatching(BaseEntityMatching):
             aggregation_method: aggregation method: 'mean_score' or 'max_frequency_nm_score'.
             n_jobs: desired number of parallel jobs in pandas candidate selection. default is all cores.
             carry_on_cols: list of column names that should be copied to the dataframe with candidates (optional)
+            custom_legal_abbreviations: Optional list of custom legal abbreviations. default is None.
+            custom_cleanco_terms: Optional custom terms for cleanco. default is None.
             kwargs: extra key-word arguments are passed on to parameters dictionary.
 
         Examples:
@@ -113,7 +120,9 @@ class PandasEntityMatching(BaseEntityMatching):
         # copy known model-parameter arguments into parameters dict
         function_locals = locals()
         model_parameters = {
-            key: function_locals.get(key) for key in MODEL_PARAMS if function_locals.get(key) is not None
+            key: function_locals.get(key)
+            for key in MODEL_PARAMS
+            if function_locals.get(key) is not None
         }
         if parameters is None:
             parameters = {}
@@ -132,7 +141,12 @@ class PandasEntityMatching(BaseEntityMatching):
         preprocessor = params["preprocessor"]
         if isinstance(preprocessor, AbstractPreprocessor):
             return preprocessor
-        return PandasPreprocessor(preprocess_pipeline=preprocessor, spark_session=params.get("spark_session"))
+        return PandasPreprocessor(
+            preprocess_pipeline=preprocessor,
+            spark_session=params.get("spark_session"),
+            custom_legal_abbreviations=params.get("custom_legal_abbreviations"),
+            custom_cleanco_terms=params.get("custom_cleanco_terms"),
+        )
 
     def _create_indexers(self) -> list[TransformerMixin]:
         params = self.parameters
@@ -176,7 +190,9 @@ class PandasEntityMatching(BaseEntityMatching):
                 indexers.append(curr_d)
         return indexers
 
-    def _create_candidate_selection_step(self, indexers: list[BaseIndexer] | None = None) -> TransformerMixin | None:
+    def _create_candidate_selection_step(
+        self, indexers: list[BaseIndexer] | None = None
+    ) -> TransformerMixin | None:
         if indexers is None:
             indexers = self._create_indexers()
         if len(indexers) == 0:
@@ -185,7 +201,9 @@ class PandasEntityMatching(BaseEntityMatching):
         return PandasCandidateSelectionTransformer(
             indexers=indexers,
             uid_col="entity_id",
-            carry_on_cols=list(set(DEFAULT_CARRY_ON_COLS + self.parameters.get("carry_on_cols", []))),
+            carry_on_cols=list(
+                set(DEFAULT_CARRY_ON_COLS + self.parameters.get("carry_on_cols", []))
+            ),
             with_no_matches=self.parameters.get("with_no_matches", True),
         )
 
@@ -195,7 +213,8 @@ class PandasEntityMatching(BaseEntityMatching):
             # this init call enables all known supervised models
             self._initialize_supervised_models()
             return PandasSupervisedLayerTransformer(
-                self.supervised_models, return_features=self.parameters["return_sm_features"]
+                self.supervised_models,
+                return_features=self.parameters["return_sm_features"],
             )
         return None
 
@@ -229,7 +248,9 @@ class PandasEntityMatching(BaseEntityMatching):
 
         return SklearnPipelineWrapper(steps)
 
-    def fit(self, ground_truth_df: pd.DataFrame, copy_ground_truth: bool = False) -> PandasEntityMatching:
+    def fit(
+        self, ground_truth_df: pd.DataFrame, copy_ground_truth: bool = False
+    ) -> PandasEntityMatching:
         """Fits name indexers on ground truth data.
 
         Fit excludes the supervised model, which needs training list of names that match to the ground truth.
@@ -255,7 +276,9 @@ class PandasEntityMatching(BaseEntityMatching):
 
         return self
 
-    def transform(self, names_df: pd.DataFrame | pd.Series, top_n: int = -1) -> pd.DataFrame:
+    def transform(
+        self, names_df: pd.DataFrame | pd.Series, top_n: int = -1
+    ) -> pd.DataFrame:
         """Matches given names against ground truth.
 
         transform() returns a pandas dataframe with name-pair candidates.
@@ -288,14 +311,20 @@ class PandasEntityMatching(BaseEntityMatching):
                 columns += ["account", "counterparty_account_count_distinct"]
             # keep all carry-on columns that are found
             if self.parameters.get("carry_on_cols", []):
-                extra_cols = [c for c in self.parameters["carry_on_cols"] if c not in columns and c in names_df.columns]
+                extra_cols = [
+                    c
+                    for c in self.parameters["carry_on_cols"]
+                    if c not in columns and c in names_df.columns
+                ]
                 columns += extra_cols
 
             # convert string columns to pyarrow
             names_df = string_columns_to_pyarrow(df=names_df, columns=columns)
 
             names_to_match = names_df[columns]
-            logger.info(f"Matching {len(names_to_match)} records against ground-truth with size {self.n_ground_truth}.")
+            logger.info(
+                f"Matching {len(names_to_match)} records against ground-truth with size {self.n_ground_truth}."
+            )
 
             res = self.model.transform(names_to_match)
 
@@ -350,7 +379,9 @@ class PandasEntityMatching(BaseEntityMatching):
             ids = sorted(train_positive_names_to_match[id_col].unique())
             if len(ids) > n_train_ids:
                 # make a random sub-selection of ids
-                logger.info(f"Reducing training set down to {len(ids)} ids through random selection.")
+                logger.info(
+                    f"Reducing training set down to {len(ids)} ids through random selection."
+                )
                 rng = np.random.default_rng(random_seed)
                 ids = list(rng.choice(ids, n_train_ids, replace=False))
                 train_positive_names_to_match = train_positive_names_to_match[
@@ -362,7 +393,8 @@ class PandasEntityMatching(BaseEntityMatching):
         create_negative_sample = create_negative_sample_fraction > 0
         # prepare training candidate name-pair data
         logger.info(
-            "generating training candidates (len(train_positive_names_to_match)=%d)", len(train_positive_names_to_match)
+            "generating training candidates (len(train_positive_names_to_match)=%d)",
+            len(train_positive_names_to_match),
         )
         if create_negative_sample:
             # increase indexing window size, needed for negative sample creation,
@@ -370,7 +402,9 @@ class PandasEntityMatching(BaseEntityMatching):
             self.increase_window_by_one_step()
         candidates = self.transform(train_positive_names_to_match)
 
-        candidates = candidates.drop(columns=["name", "gt_name"]).rename(columns={"score": "score_0"})
+        candidates = candidates.drop(columns=["name", "gt_name"]).rename(
+            columns={"score": "score_0"}
+        )
         if create_negative_sample:
             # reset indexers back to normal settings
             self.decrease_window_by_one_step()
@@ -379,7 +413,9 @@ class PandasEntityMatching(BaseEntityMatching):
         # this creates the negative names, add labels, and returns a pandas dataframe.
         return prepare_name_pairs_pd(
             candidates,
-            drop_duplicate_candidates=self.parameters.get("drop_duplicate_candidates", False)
+            drop_duplicate_candidates=self.parameters.get(
+                "drop_duplicate_candidates", False
+            )
             if drop_duplicate_candidates is None
             else drop_duplicate_candidates,
             create_negative_sample_fraction=create_negative_sample_fraction,
@@ -388,7 +424,9 @@ class PandasEntityMatching(BaseEntityMatching):
             uid_col=self.parameters.get("uid_col", "uid"),
             gt_uid_col=self.parameters.get("gt_uid_col", "gt_uid"),
             preprocessed_col=self.parameters.get("preprocessed_col", "preprocessed"),
-            gt_preprocessed_col=self.parameters.get("gt_preprocessed_col", "gt_preprocessed"),
+            gt_preprocessed_col=self.parameters.get(
+                "gt_preprocessed_col", "gt_preprocessed"
+            ),
             random_seed=random_seed,
             **kwargs,
         )
@@ -499,7 +537,9 @@ class PandasEntityMatching(BaseEntityMatching):
             name_only=self.parameters.get("name_only", False),
             positive_set_col=self.parameters.get("positive_set_col", "positive_set"),
             score_columns=score_columns,
-            with_legal_entity_forms_match=self.parameters.get("with_legal_entity_forms_match", False),
+            with_legal_entity_forms_match=self.parameters.get(
+                "with_legal_entity_forms_match", False
+            ),
             extra_features=extra_features,
             **fit_kws,
         )
@@ -518,13 +558,17 @@ class PandasEntityMatching(BaseEntityMatching):
         # re-add aggregation layer into fitted pipeline
         if aggregation_step is not None:
             if aggregation_step[1].score_col != store_key:
-                logger.info(f'updating aggregation score column to new model "{store_key}"')
+                logger.info(
+                    f'updating aggregation score column to new model "{store_key}"'
+                )
                 aggregation_step[1].score_col = store_key
             self.model.steps.append(aggregation_step)
 
         return self
 
-    def test_classifier(self, test_names_to_match: pd.DataFrame, test_gt: pd.DataFrame | None = None):
+    def test_classifier(
+        self, test_names_to_match: pd.DataFrame, test_gt: pd.DataFrame | None = None
+    ):
         """Helper function for testing the supervised model.
 
         Print multiple ML model metrics.
@@ -542,17 +586,36 @@ class PandasEntityMatching(BaseEntityMatching):
         if test_gt is None:
             test_gt = self.ground_truth_df
 
-        def combine_sm_results(df: pd.DataFrame, sel_cand: pd.DataFrame, test_gt: pd.DataFrame) -> pd.DataFrame:
-            res = df.join(sel_cand[["gt_entity_id", "gt_name", "gt_preprocessed", "nm_score", "score_0"]], how="left")
+        def combine_sm_results(
+            df: pd.DataFrame, sel_cand: pd.DataFrame, test_gt: pd.DataFrame
+        ) -> pd.DataFrame:
+            res = df.join(
+                sel_cand[
+                    [
+                        "gt_entity_id",
+                        "gt_name",
+                        "gt_preprocessed",
+                        "nm_score",
+                        "score_0",
+                    ]
+                ],
+                how="left",
+            )
             res["nm_score"] = res["nm_score"].fillna(-1)
             res["score_0"] = res["score_0"].fillna(-1)
             is_in_pos = res["id"].isin(test_gt["id"])
-            res["correct"] = ((is_in_pos) & (res["id"] == res["gt_entity_id"])) | ((~is_in_pos) & (res["id"].isnull()))
+            res["correct"] = ((is_in_pos) & (res["id"] == res["gt_entity_id"])) | (
+                (~is_in_pos) & (res["id"].isnull())
+            )
             return res
 
         test_candidates = self.transform(test_names_to_match.copy())
-        cand_after_sm = test_candidates[test_candidates.best_match].set_index("uid", drop=True)
-        results_after_sm = combine_sm_results(test_names_to_match, cand_after_sm, test_gt)
+        cand_after_sm = test_candidates[test_candidates.best_match].set_index(
+            "uid", drop=True
+        )
+        results_after_sm = combine_sm_results(
+            test_names_to_match, cand_after_sm, test_gt
+        )
         logger.info(
             "AUC of the supervised model: %.4f",
             roc_auc_score(results_after_sm["correct"], results_after_sm["nm_score"]),
@@ -588,7 +651,11 @@ class PandasEntityMatching(BaseEntityMatching):
         # reinsert again below with new sklearn model included.
         if self.parameters.get("supervised_on", False):
             self.model.steps.pop(2)
-        aggregation_step = self.model.steps.pop() if self.parameters.get("aggregation_layer", False) else None
+        aggregation_step = (
+            self.model.steps.pop()
+            if self.parameters.get("aggregation_layer", False)
+            else None
+        )
 
         # add new supervised model to self.supervised_models
         # self.supervised_models contains all trained and untrained sklearn models
@@ -613,7 +680,9 @@ class PandasEntityMatching(BaseEntityMatching):
         # re-add aggregation layer into fitted pipeline
         if aggregation_step is not None:
             if aggregation_step[1].score_col != store_key:
-                logger.info(f'updating aggregation score column to new model "{store_key}"')
+                logger.info(
+                    f'updating aggregation score column to new model "{store_key}"'
+                )
                 aggregation_step[1].score_col = store_key
             self.model.steps.append(aggregation_step)
 
@@ -668,8 +737,13 @@ class PandasEntityMatching(BaseEntityMatching):
         candidate_selector = self.model.steps[1][1]
         if "account" not in candidate_selector.carry_on_cols:
             candidate_selector.carry_on_cols.append("account")
-        if "counterparty_account_count_distinct" not in candidate_selector.carry_on_cols:
-            candidate_selector.carry_on_cols.append("counterparty_account_count_distinct")
+        if (
+            "counterparty_account_count_distinct"
+            not in candidate_selector.carry_on_cols
+        ):
+            candidate_selector.carry_on_cols.append(
+                "counterparty_account_count_distinct"
+            )
 
     def increase_window_by_one_step(self):
         """Utility function for negative sample creation during training
@@ -763,7 +837,9 @@ class PandasEntityMatching(BaseEntityMatching):
         # copy known model-parameter arguments into parameters dict
         function_locals = locals()
         model_parameters = {
-            key: function_locals.get(key) for key in MODEL_PARAMS if function_locals.get(key) is not None
+            key: function_locals.get(key)
+            for key in MODEL_PARAMS
+            if function_locals.get(key) is not None
         }
         if override_parameters is None:
             override_parameters = {}

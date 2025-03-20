@@ -34,7 +34,12 @@ from emm.data.prepare_name_pairs import prepare_name_pairs
 from emm.helper.io import IOFunc
 from emm.helper.spark_custom_reader_writer import SparkReadable, SparkWriteable
 from emm.helper.spark_ml_pipeline import EMPipeline
-from emm.helper.spark_utils import auto_repartitioning, check_uid, set_partitions, set_spark_job_group
+from emm.helper.spark_utils import (
+    auto_repartitioning,
+    check_uid,
+    set_partitions,
+    set_spark_job_group,
+)
 from emm.indexing.base_indexer import BaseIndexer
 from emm.indexing.spark_candidate_selection import SparkCandidateSelectionEstimator
 from emm.indexing.spark_cos_sim_matcher import SparkCosSimIndexer
@@ -54,11 +59,20 @@ if TYPE_CHECKING:
 
 
 class SparkEntityMatching(
-    SparkReadable, SparkWriteable, BaseEntityMatching, DefaultParamsReadable, DefaultParamsWritable
+    SparkReadable,
+    SparkWriteable,
+    BaseEntityMatching,
+    DefaultParamsReadable,
+    DefaultParamsWritable,
 ):
     """Spark implementation of EntityMatching"""
 
-    SERIALIZE_ATTRIBUTES = ("create_pipeline", "parameters", "supervised_models", "model")
+    SERIALIZE_ATTRIBUTES = (
+        "create_pipeline",
+        "parameters",
+        "supervised_models",
+        "model",
+    )
 
     def __init__(
         self,
@@ -78,6 +92,8 @@ class SparkEntityMatching(
         aggregation_layer: bool | None = None,
         aggregation_method: str | None = None,
         carry_on_cols: list[str] | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
         model: PipelineModel | None = None,
         **kwargs,
     ) -> None:
@@ -110,6 +126,8 @@ class SparkEntityMatching(
             aggregation_layer: if True, turn on aggregation later. Default if False.
             aggregation_method: aggregation method: 'name_clustering' or 'mean_score'. Default is 'name_clustering'.
             carry_on_cols: list of column names that should be copied to the dataframe with candidates (optional)
+            custom_legal_abbreviations: Optional list of custom legal abbreviations. default is None.
+            custom_cleanco_terms: Optional custom terms for cleanco. default is None.
             model: the PipelineModel
             kwargs: extra key-word arguments are passed on to parameters' dictionary.
 
@@ -123,15 +141,21 @@ class SparkEntityMatching(
         # copy known model-parameter arguments into parameters dict
         function_locals = locals()
         model_parameters = {
-            key: function_locals.get(key) for key in MODEL_PARAMS if function_locals.get(key) is not None
+            key: function_locals.get(key)
+            for key in MODEL_PARAMS
+            if function_locals.get(key) is not None
         }
         if parameters is None:
             parameters = {}
         parameters.update({**model_parameters, **kwargs})
-        BaseEntityMatching.__init__(self, parameters=parameters, supervised_models=supervised_models)
+        BaseEntityMatching.__init__(
+            self, parameters=parameters, supervised_models=supervised_models
+        )
 
         # set (missing) parameters of indexers
-        self.parameters["indexers"] = self._indexers_set_default_values(self.parameters["indexers"])
+        self.parameters["indexers"] = self._indexers_set_default_values(
+            self.parameters["indexers"]
+        )
         self.initialize(create_pipeline)
 
         # Default: model is set during fit(), but may be passed as individual kwarg.
@@ -196,7 +220,9 @@ class SparkEntityMatching(
             force_execution=params.get("force_execution", False),
             unpersist_broadcast=params.get("unpersist_broadcast", False),
             with_no_matches=params.get("with_no_matches", True),
-            carry_on_cols=list(set(DEFAULT_CARRY_ON_COLS + params.get("carry_on_cols", []))),
+            carry_on_cols=list(
+                set(DEFAULT_CARRY_ON_COLS + params.get("carry_on_cols", []))
+            ),
         )
 
     def _create_pipeline(self) -> Pipeline:
@@ -208,10 +234,18 @@ class SparkEntityMatching(
         if isinstance(preprocessor, AbstractPreprocessor):
             self.pipeline_preprocessor = preprocessor
         else:
-            self.pipeline_preprocessor = SparkPreprocessor(preprocessor)
+            self.pipeline_preprocessor = SparkPreprocessor(
+                preprocessor,
+                custom_legal_abbreviations=self.parameters.get(
+                    "custom_legal_abbreviations"
+                ),
+                custom_cleanco_terms=self.parameters.get("custom_cleanco_terms"),
+            )
         stages += [self.pipeline_preprocessor]
         # step 2: Candidate name-pair selection (= indexing)
-        self.pipeline_candidate_selection = self._create_multiple_indexers(self.parameters)
+        self.pipeline_candidate_selection = self._create_multiple_indexers(
+            self.parameters
+        )
         stages += [self.pipeline_candidate_selection]
         # step 3: classifier model (= name matching)
         if self.parameters["supervised_on"]:
@@ -244,7 +278,9 @@ class SparkEntityMatching(
         self.pipeline = EMPipeline(stages=stages)
         return self.pipeline
 
-    def fit(self, ground_truth_df, copy_ground_truth: bool = False) -> SparkEntityMatching:
+    def fit(
+        self, ground_truth_df, copy_ground_truth: bool = False
+    ) -> SparkEntityMatching:
         """Fits name indexers on ground truth data.
 
         Fit excludes the supervised model, which needs training list of names-to-match.
@@ -259,7 +295,8 @@ class SparkEntityMatching(
         """
         logger.info("SparkEntityMatching.fit()")
         set_spark_job_group(
-            "Fit", f"Fit and broadcast model (ground truth matrix) to workers. Parameters: {self.parameters}"
+            "Fit",
+            f"Fit and broadcast model (ground truth matrix) to workers. Parameters: {self.parameters}",
         )
 
         self._check_relevant_columns_present(ground_truth_df, ground_truth=True)
@@ -271,7 +308,9 @@ class SparkEntityMatching(
         # We repartition in order to have at least 200, to have a nice parallel computation
         # (assuming memory is not an issue here) and nice parallelism for joins in transform() later on.
         # We usually have less than 200 partitions in case the ground_truth is not that long.
-        ground_truth_df, self.n_ground_truth = auto_repartitioning(ground_truth_df, self.parameters["partition_size"])
+        ground_truth_df, self.n_ground_truth = auto_repartitioning(
+            ground_truth_df, self.parameters["partition_size"]
+        )
         ground_truth_df = check_uid(ground_truth_df, self.parameters["uid_col"])
         ground_truth_df = self._normalize_column_names(ground_truth_df)
         self.model = self.pipeline.fit(ground_truth_df)
@@ -304,7 +343,9 @@ class SparkEntityMatching(
         if self.parameters["streaming"]:
             n_names = names_df.rdd.countApprox(timeout=20)
         else:
-            names_df, n_names = auto_repartitioning(names_df, self.parameters["partition_size"])
+            names_df, n_names = auto_repartitioning(
+                names_df, self.parameters["partition_size"]
+            )
             num_partitions = names_df.rdd.getNumPartitions()
             # update num_partitions of candidate_selection_model
             self.model.stages[1].num_partitions = num_partitions
@@ -312,7 +353,9 @@ class SparkEntityMatching(
                 # If bigger than default value update this to have the number partitions kept after join() and groupby()
                 set_partitions(num_partitions)
 
-        logger.info(f"Matching {n_names} records against ground-truth with size {self.n_ground_truth}.")
+        logger.info(
+            f"Matching {n_names} records against ground-truth with size {self.n_ground_truth}."
+        )
         matched_df = self.model.transform(names_df)
 
         if not self.parameters["keep_all_cols"]:
@@ -328,13 +371,19 @@ class SparkEntityMatching(
             cols_to_keep = names_df.columns
             cols_to_drop = [c for c in matched_df.columns if c not in cols_to_keep]
             cols_to_drop = [
-                c for c in cols_to_drop if not re.match(pattern, c) and not c.endswith("_score") and c != "preprocessed"
+                c
+                for c in cols_to_drop
+                if not re.match(pattern, c)
+                and not c.endswith("_score")
+                and c != "preprocessed"
             ]
             matched_df = matched_df.drop(*cols_to_drop)
             logger.debug(f"Dropping columns: {cols_to_drop}")
 
         if isinstance(top_n, int) and top_n > 0 and "best_rank" in matched_df.columns:
-            return matched_df.filter((F.col("best_rank") <= top_n) & (F.col("gt_uid").isNotNull()))
+            return matched_df.filter(
+                (F.col("best_rank") <= top_n) & (F.col("gt_uid").isNotNull())
+            )
 
         return matched_df
 
@@ -380,10 +429,18 @@ class SparkEntityMatching(
         # do reduction based on id to avoid signal leakage
         if n_train_ids > 0:
             id_col = self.parameters["entity_id_col"]
-            ids = sorted(train_positive_names_to_match.select(id_col).distinct().toPandas()[id_col].values)
+            ids = sorted(
+                train_positive_names_to_match.select(id_col)
+                .distinct()
+                .toPandas()[id_col]
+                .values
+            )
             if len(ids) > n_train_ids:
                 # make a random sub-selection of ids
-                logger.info("Reducing training set down to %d ids through random selection.", len(ids))
+                logger.info(
+                    "Reducing training set down to %d ids through random selection.",
+                    len(ids),
+                )
                 rng = np.random.default_rng(random_seed)
                 ids = list(rng.choice(ids, n_train_ids, replace=False))
                 train_positive_names_to_match = train_positive_names_to_match.filter(
@@ -407,7 +464,9 @@ class SparkEntityMatching(
         # this creates the negative names, add labels, and returns a pandas dataframe.
         return prepare_name_pairs(
             candidates,
-            drop_duplicate_candidates=self.parameters.get("drop_duplicate_candidates", False)
+            drop_duplicate_candidates=self.parameters.get(
+                "drop_duplicate_candidates", False
+            )
             if drop_duplicate_candidates is None
             else drop_duplicate_candidates,
             create_negative_sample_fraction=create_negative_sample_fraction,
@@ -416,7 +475,9 @@ class SparkEntityMatching(
             uid_col=self.parameters.get("uid_col", "uid"),
             gt_uid_col=self.parameters.get("gt_uid_col", "gt_uid"),
             preprocessed_col=self.parameters.get("preprocessed_col", "preprocessed"),
-            gt_preprocessed_col=self.parameters.get("gt_preprocessed_col", "gt_preprocessed"),
+            gt_preprocessed_col=self.parameters.get(
+                "gt_preprocessed_col", "gt_preprocessed"
+            ),
             random_seed=random_seed,
             **kwargs,
         )
@@ -492,7 +553,9 @@ class SparkEntityMatching(
             # supervised model is turned off as it will be trained below
             self.parameters["supervised_on"] = False
             self._create_pipeline()
-            logger.debug(f"training indexers, using following params: {self.parameters}")
+            logger.debug(
+                f"training indexers, using following params: {self.parameters}"
+            )
             # this creates the fitted model: self.model
             self.fit(train_gt)
 
@@ -501,7 +564,11 @@ class SparkEntityMatching(
         # keep both stages for re-adding later (also in case of do_training=False).
         if self.parameters.get("supervised_on", False):
             self.model.stages.pop(2)
-        aggregation_model = self.model.stages.pop() if self.parameters.get("aggregation_layer", False) else None
+        aggregation_model = (
+            self.model.stages.pop()
+            if self.parameters.get("aggregation_layer", False)
+            else None
+        )
         # remove any existing untrained model 'X', no longer needed.
         if isinstance(self.supervised_models, dict):
             self.supervised_models.pop("X", None)
@@ -526,7 +593,9 @@ class SparkEntityMatching(
             name_only=self.parameters.get("name_only", False),
             positive_set_col=self.parameters.get("positive_set_col", "positive_set"),
             score_columns=score_columns,
-            with_legal_entity_forms_match=self.parameters.get("with_legal_entity_forms_match", False),
+            with_legal_entity_forms_match=self.parameters.get(
+                "with_legal_entity_forms_match", False
+            ),
             n_jobs=n_jobs,
             extra_features=extra_features,
             **fit_kws,
@@ -540,7 +609,8 @@ class SparkEntityMatching(
         self._initialize_supervised_models()
         self._disable_multiprocessing_all_models()
         self.pipeline_supervised_layer = SparkSupervisedLayerEstimator(
-            self.supervised_models, return_features=self.parameters["return_sm_features"]
+            self.supervised_models,
+            return_features=self.parameters["return_sm_features"],
         )
         # dummy call, this simply creates the spark _model_
         sm_model = self.pipeline_supervised_layer.fit(dataset=None)
@@ -555,7 +625,9 @@ class SparkEntityMatching(
         # re-add aggregation layer into fitted pipeline
         if aggregation_model is not None:
             if aggregation_model.score_col != store_key:
-                logger.info(f'updating aggregation score column to new model "{store_key}"')
+                logger.info(
+                    f'updating aggregation score column to new model "{store_key}"'
+                )
                 aggregation_model.score_col = store_key
             self.model.stages.append(aggregation_model)
         return self
@@ -590,7 +662,11 @@ class SparkEntityMatching(
         # reinsert again below with new sklearn model included.
         if self.parameters.get("supervised_on", False):
             self.model.stages.pop(2)
-        aggregation_model = self.model.stages.pop() if self.parameters.get("aggregation_layer", False) else None
+        aggregation_model = (
+            self.model.stages.pop()
+            if self.parameters.get("aggregation_layer", False)
+            else None
+        )
 
         # add new supervised model to self.supervised_models
         # self.supervised_models contains all trained and untrained sklearn models
@@ -607,7 +683,8 @@ class SparkEntityMatching(
         if return_features is not None:
             self.parameters["return_sm_features"] = return_features
         supervised_layer = SparkSupervisedLayerEstimator(
-            self.supervised_models, return_features=self.parameters["return_sm_features"]
+            self.supervised_models,
+            return_features=self.parameters["return_sm_features"],
         )
         # dummy call, this simply creates the "trained" spark supervised model that includes new sklearn model
         sm_model = supervised_layer.fit(dataset=None)
@@ -619,7 +696,9 @@ class SparkEntityMatching(
         # re-add aggregation layer into fitted pipeline with updated score column
         if aggregation_model is not None:
             if aggregation_model.score_col != store_key:
-                logger.info(f'updating aggregation score column to new model "{store_key}"')
+                logger.info(
+                    f'updating aggregation score column to new model "{store_key}"'
+                )
                 aggregation_model.score_col = store_key
             self.model.stages.append(aggregation_model)
 
@@ -628,7 +707,8 @@ class SparkEntityMatching(
         score_col: str | None = None,
         account_col: str | None = None,
         freq_col: str | None = None,
-        aggregation_method: Literal["max_frequency_nm_score", "mean_score"] | None = None,
+        aggregation_method: Literal["max_frequency_nm_score", "mean_score"]
+        | None = None,
         blacklist: list | None = None,
         aggregation_layer: BaseEntityAggregation | None = None,
     ) -> None:
@@ -654,7 +734,11 @@ class SparkEntityMatching(
         if aggregation_layer is None:
             self.parameters["aggregation_layer"] = True
             if score_col is None:
-                score_col = "nm_score" if self.parameters.get("supervised_on", False) else "score_0"
+                score_col = (
+                    "nm_score"
+                    if self.parameters.get("supervised_on", False)
+                    else "score_0"
+                )
             if account_col is not None:
                 self.parameters["account_col"] = account_col
             if freq_col is not None:
@@ -763,7 +847,9 @@ class SparkEntityMatching(
         # copy known model-parameter arguments into parameters dict
         function_locals = locals()
         model_parameters = {
-            key: function_locals.get(key) for key in MODEL_PARAMS if function_locals.get(key) is not None
+            key: function_locals.get(key)
+            for key in MODEL_PARAMS
+            if function_locals.get(key) is not None
         }
         if override_parameters is None:
             override_parameters = {}

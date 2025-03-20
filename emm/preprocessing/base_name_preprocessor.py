@@ -89,6 +89,8 @@ class AbstractPreprocessor(Module):
         input_col: str = "name",
         output_col: str = "preprocessed",
         spark_session: Any | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
     ) -> None:
         """Base class of Name Preprocessor
 
@@ -114,6 +116,8 @@ class AbstractPreprocessor(Module):
         self.input_col = input_col
         self.output_col = output_col
         self.spark_session = spark_session
+        self.custom_legal_abbreviations = custom_legal_abbreviations
+        self.custom_cleanco_terms = custom_cleanco_terms
         if isinstance(preprocess_pipeline, list):  # custom pipeline
             self.preprocess_list = preprocess_pipeline
         elif isinstance(preprocess_pipeline, str):  # defined pipeline (type==str)
@@ -124,4 +128,7 @@ class AbstractPreprocessor(Module):
         super().__init__()
 
     def create_func_dict(self) -> dict[str, Any]:
-        return create_func_dict()
+        return create_func_dict(
+            custom_legal_abbreviations=self.custom_legal_abbreviations,
+            custom_cleanco_terms=self.custom_cleanco_terms,
+        )

@@ -45,7 +45,13 @@ class SparkPreprocessor(
 ):
     """Spark implementation of Name Preprocessor"""
 
-    SERIALIZE_ATTRIBUTES = ("preprocess_pipeline", "_input_col", "_output_col")
+    SERIALIZE_ATTRIBUTES = (
+        "preprocess_pipeline",
+        "_input_col",
+        "_output_col",
+        "custom_legal_abbreviations",
+        "custom_cleanco_terms",
+    )
     SPARK_SESSION_KW = "spark_session"
 
     def __init__(
@@ -54,6 +60,8 @@ class SparkPreprocessor(
         input_col: str = "name",
         output_col: str = "preprocessed",
         spark_session: Any | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
     ) -> None:
         """Spark implementation of Name Preprocessor
 
@@ -76,6 +84,8 @@ class SparkPreprocessor(
             input_col: column name of input names. optional. default is "name".
             output_col: column name of output names. optional. default is "preprocessed".
             spark_session: spark session for processing. default processing is local. optional.
+            custom_legal_abbreviations: Optional list of custom legal abbreviations. default is None.
+            custom_cleanco_terms: Optional custom terms for cleanco. default is None.
 
 
         Examples:
@@ -86,7 +96,15 @@ class SparkPreprocessor(
         super().__init__()
         self._set(inputCol=input_col)
         self._set(outputCol=output_col)
-        AbstractPreprocessor.__init__(self, preprocess_pipeline, input_col, output_col, spark_session)
+        AbstractPreprocessor.__init__(
+            self,
+            preprocess_pipeline,
+            input_col,
+            output_col,
+            spark_session,
+            custom_legal_abbreviations,
+            custom_cleanco_terms,
+        )
 
     def _transform(self, dataset):
         """Apply preprocessing functions to input names in dataframe
@@ -109,7 +127,9 @@ class SparkPreprocessor(
         func_dict = self.create_func_dict()
         for preprocess_def in self.preprocess_list:
             func = (
-                func_dict[preprocess_def] if isinstance(preprocess_def, str) else sf.udf(preprocess_def, StringType())
+                func_dict[preprocess_def]
+                if isinstance(preprocess_def, str)
+                else sf.udf(preprocess_def, StringType())
             )
             dataset = dataset.withColumn(output_col, func(output_col))
         return dataset

@@ -25,10 +25,25 @@ from typing import Any, Callable
 import cleanco
 from unidecode import unidecode
 
-from emm.preprocessing.abbreviation_util import abbreviations_to_words, legal_abbreviations_to_words
+from emm.preprocessing.abbreviation_util import (
+    abbreviations_to_words,
+    legal_abbreviations_to_words,
+)
 
 
-def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] | Callable[[str], str]]:
+def create_func_dict(
+    use_spark: bool = True, custom_legal_abbreviations=None, custom_cleanco_terms=None
+) -> dict[str, Callable[[Any], Any] | Callable[[str], str]]:
+    """Create function dictionary for preprocessing
+
+    Args:
+        use_spark: Whether to use Spark functions (True) or Pandas functions (False)
+        custom_legal_abbreviations: Optional list of custom legal abbreviations
+        custom_cleanco_terms: Optional custom terms for cleanco
+
+    Returns:
+        Dictionary of preprocessing functions
+    """
     if use_spark:
         import emm.preprocessing.spark_functions as F
     else:
@@ -47,6 +62,12 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
         ]:
             name = F.regex_replace(pat, shorthand, simple=True)(name)
         return name
+
+    terms = (
+        custom_cleanco_terms
+        if custom_cleanco_terms is not None
+        else cleanco.prepare_default_terms()
+    )
 
     return {
         # Replace accented characters by their normalized representation, e.g. replace 'ä' with 'A\xa4'
@@ -69,21 +90,28 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
         # Map all the abbreviations to the same format (Z. S. = Z.S. = ZS)
         "merge_abbreviations": F.run_custom_function(abbreviations_to_words),
         # Map all the legal form abbreviations to the same format (B. V.= B.V. = B V = BV)
-        "merge_legal_form_abbreviations": F.run_custom_function(legal_abbreviations_to_words),
+        "merge_legal_form_abbreviations": F.run_custom_function(
+            partial(
+                legal_abbreviations_to_words,
+                custom_legal_abbreviations=custom_legal_abbreviations,
+            )
+        ),
         # Map all the legal form abbreviations to the same format (B. V.= B.V. = B V = BV)
         "remove_extra_space": F.regex_replace(r"""\s+""", " ", simple=True),
         # Map all the shorthands to the same format (stichting => stg)
         "map_shorthands": map_shorthands,
         # Merge & or / separated abbreviations by removing & or / and the spaces between them
         "merge_&": F.regex_replace(
-            r"(\s|^)(\w)\s*[&/]\s*(\w)(\s|$)", r"$1$2$3$4" if use_spark else r"\1\2\3\4", simple=True
+            r"(\s|^)(\w)\s*[&/]\s*(\w)(\s|$)",
+            r"$1$2$3$4" if use_spark else r"\1\2\3\4",
+            simple=True,
         ),
         # remove legal form
         "remove_legal_form": F.run_custom_function(
             partial(
                 cleanco.clean.custom_basename,
                 # Warning! the default set is incomplete and misses a lot of popular legal forms
-                terms=cleanco.prepare_default_terms(),
+                terms=terms,
                 prefix=True,
                 middle=True,
                 suffix=True,

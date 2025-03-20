@@ -38,7 +38,9 @@ ABBR_FINDER_PUNC = re.compile(
     r"(?:(?:\w\.)+(?:\w(?=\s|$)|\w\.)))",
     re.UNICODE,
 )
-ABBR_FINDER_PUNC2 = re.compile(r"(?:^|\s)((?:\w(?:\.\s|$|\s|\.))+|(?:\w+(?:\.\s|$|\.))+)", re.UNICODE)
+ABBR_FINDER_PUNC2 = re.compile(
+    r"(?:^|\s)((?:\w(?:\.\s|$|\s|\.))+|(?:\w+(?:\.\s|$|\.))+)", re.UNICODE
+)
 
 # RE_ABBR_SEPARATOR: abbreviation separators
 RE_ABBR_SEPARATOR = re.compile(r"(\s|\.)", re.UNICODE)
@@ -105,10 +107,18 @@ def preprocess(name):
     return abbreviations_to_words(name).lower()
 
 
-def legal_abbreviations_to_words(name):
-    """Maps all the abbreviations to the same format (B. V.= B.V. = B V = BV)"""
+def legal_abbreviations_to_words(name, custom_legal_abbreviations=None):
+    """Maps all the abbreviations to the same format (B. V.= B.V. = B V = BV)
+
+    Args:
+        name: The name to process
+        custom_legal_abbreviations: Optional list of custom legal abbreviations to use instead of the default list
+
+    Returns:
+        Processed name with standardized legal abbreviations
+    """
     # a legal form list contains most important words
-    legal_form_abbr_list = [
+    default_legal_form_abbr_list = [
         "bv",
         "nv",
         "vof",  # netherlands
@@ -131,10 +141,22 @@ def legal_abbreviations_to_words(name):
         "spzoo",  # Poland
         "plc",  # us
     ]
+
+    legal_form_abbr_list = (
+        custom_legal_abbreviations
+        if custom_legal_abbreviations is not None
+        else default_legal_form_abbr_list
+    )
+
     all_abbreviations = ABBR_FINDER_PUNC2.findall(name)
     for abbreviation in all_abbreviations:
+        has_trailing_space = abbreviation.endswith(" ")
         new_form = RE_ABBR_SEPARATOR2.sub("", abbreviation)
+
         if new_form in legal_form_abbr_list:
+            # Add back the trailing space if it was present in the original
+            if has_trailing_space:
+                new_form += " "
             name = name.replace(abbreviation, new_form)
     return name
 
@@ -146,4 +168,7 @@ def abbr_match(str_with_abbr, str_with_open_form):
         if extract_abbr_merged_initials(abbr, str_with_open_form) is not None:
             return True
     abbr_list = find_abbr_merged_word_pieces(str_with_abbr)
-    return any(extract_abbr_merged_word_pieces(abbr, str_with_open_form) is not None for abbr in abbr_list)
+    return any(
+        extract_abbr_merged_word_pieces(abbr, str_with_open_form) is not None
+        for abbr in abbr_list
+    )

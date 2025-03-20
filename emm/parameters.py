@@ -32,7 +32,12 @@ MODEL_PARAMS = {
     # type of name preprocessor defined in name_preprocessing.py
     "preprocessor": "preprocess_merge_abbr",
     "indexers": [
-        {"type": "cosine_similarity", "tokenizer": "words", "ngram": 1, "num_candidates": 10},
+        {
+            "type": "cosine_similarity",
+            "tokenizer": "words",
+            "ngram": 1,
+            "num_candidates": 10,
+        },
         {
             "type": "cosine_similarity",
             "tokenizer": "characters",
@@ -58,7 +63,9 @@ MODEL_PARAMS = {
     "supervised_on": False,  # To activate the supervised layer
     "name_only": True,  # False: we use the country feature in the supervised model. (Before this param was switching from NM to EM, now we have aggregation_layer)
     "supervised_model_object": None,  # use in-memory supervised model
-    "supervised_model_dir": Path("./"),  # can be used to set default location of trained sklearn models
+    "supervised_model_dir": Path(
+        "./"
+    ),  # can be used to set default location of trained sklearn models
     "aggregation_layer": False,  # The aggregation on account level
     "aggregation_method": "max_frequency_nm_score",  # 'max_frequency_nm_score', 'mean_score'. Needs 'account_col' and 'freq_col'.
     "aggregation_blacklist": [],  # list of names to blacklist in clustering. see data/cluster_blacklist.py
@@ -70,6 +77,8 @@ MODEL_PARAMS = {
     "unpersist_broadcast": False,  # after spark indexer transform, free up memory that has been broadcast.
     "with_no_matches": False,  # if true, for each name with no match add an artificial name-pair candidate row.
     "carry_on_cols": [],  # list of column names that should always be copied to the dataframe with candidates if present. GT columns get prefix 'gt_'.
+    "custom_legal_abbreviations": None,
+    "custom_cleanco_terms": None,
 }
 
 # default indexer settings. These are picked up when corresponding settings are missing in MODEL_PARAMS["indexers"]
@@ -95,11 +104,21 @@ DEFAULT_INDEXER_PARAMS = {
 }
 
 # list of column names that should always be copied to the dataframe with candidates if present
-DEFAULT_CARRY_ON_COLS = ["name", "preprocessed", "country", "account", "counterparty_account_count_distinct"]
+DEFAULT_CARRY_ON_COLS = [
+    "name",
+    "preprocessed",
+    "country",
+    "account",
+    "counterparty_account_count_distinct",
+]
 
 # update indexer settings with default values in case missing in MODEL_PARAMS["indexers"]
-MODEL_PARAMS["indexers"] = util.indexers_set_values(DEFAULT_INDEXER_PARAMS, MODEL_PARAMS["indexers"])
-MODEL_PARAMS["carry_on_cols"] = list(set(DEFAULT_CARRY_ON_COLS + MODEL_PARAMS["carry_on_cols"]))
+MODEL_PARAMS["indexers"] = util.indexers_set_values(
+    DEFAULT_INDEXER_PARAMS, MODEL_PARAMS["indexers"]
+)
+MODEL_PARAMS["carry_on_cols"] = list(
+    set(DEFAULT_CARRY_ON_COLS + MODEL_PARAMS["carry_on_cols"])
+)
 
 # Example settings for spark driver and executors that work well for large datasets (10M names x 30M names)
 SPARK_CONFIG_EXAMPLE = {
