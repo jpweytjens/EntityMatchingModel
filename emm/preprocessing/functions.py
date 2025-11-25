@@ -19,11 +19,21 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import partial
 from typing import Any, Callable
 
 import cleanco
-from unidecode import unidecode
+
+try:
+    from unidecode import unidecode
+except ImportError:
+    unidecode = None
+    warnings.warn(
+        "The 'unidecode' module is not installed. 'strip_accents_unicode' will default to an identity function. "
+        "Install 'unidecode' to enable accent stripping functionality.",
+        ImportWarning,
+    )
 
 from emm.preprocessing.abbreviation_util import abbreviations_to_words, legal_abbreviations_to_words
 
@@ -50,7 +60,7 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
 
     return {
         # Replace accented characters by their normalized representation, e.g. replace 'ä' with 'A\xa4'
-        "strip_accents_unicode": F.run_custom_function(unidecode),
+        "strip_accents_unicode": F.run_custom_function(unidecode if unidecode is not None else (lambda x: x)),
         # Replace all dash and underscore characters with a space characters
         "strip_hyphens": F.regex_replace(r"""[-_]""", " ", simple=True),
         # Replace all punctuation characters (e.g. '.', '-', '_', ''', ';') with spaces

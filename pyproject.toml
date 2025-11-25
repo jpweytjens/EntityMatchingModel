@@ -31,8 +31,7 @@ dependencies = [
   "sparse-dot-topn>=1.1.1",
   "joblib",
   "pyarrow>=6.0.1", # seems to work with spark 3.1.2 - 3.3.1
-  "requests",
-  "unidecode"
+  "requests"
 ]
 dynamic = ["version"]
 
@@ -53,10 +52,14 @@ dev = [
   "pandoc",
   "pympler"
 ]
+preprocessing = [
+  "unidecode"
+]
 test = [
   "pytest",
   "pytest-ordering",
-  "virtualenv"
+  "virtualenv",
+  "unidecode"
 ]
 test-cov = [
   "coverage",
