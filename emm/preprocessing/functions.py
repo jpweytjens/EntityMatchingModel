@@ -38,7 +38,9 @@ except ImportError:
 from emm.preprocessing.abbreviation_util import abbreviations_to_words, legal_abbreviations_to_words
 
 
-def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] | Callable[[str], str]]:
+def create_func_dict(
+    use_spark: bool = True, custom_legal_abbreviations=None, custom_cleanco_terms=None
+) -> dict[str, Callable[[Any], Any] | Callable[[str], str]]:
     if use_spark:
         import emm.preprocessing.spark_functions as F
     else:
@@ -79,7 +81,12 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
         # Map all the abbreviations to the same format (Z. S. = Z.S. = ZS)
         "merge_abbreviations": F.run_custom_function(abbreviations_to_words),
         # Map all the legal form abbreviations to the same format (B. V.= B.V. = B V = BV)
-        "merge_legal_form_abbreviations": F.run_custom_function(legal_abbreviations_to_words),
+        "merge_legal_form_abbreviations": F.run_custom_function(
+            partial(
+                legal_abbreviations_to_words,
+                custom_legal_abbreviations=custom_legal_abbreviations,
+            )
+        ),
         # Map all the legal form abbreviations to the same format (B. V.= B.V. = B V = BV)
         "remove_extra_space": F.regex_replace(r"""\s+""", " ", simple=True),
         # Map all the shorthands to the same format (stichting => stg)
@@ -93,7 +100,7 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
             partial(
                 cleanco.clean.custom_basename,
                 # Warning! the default set is incomplete and misses a lot of popular legal forms
-                terms=cleanco.prepare_default_terms(),
+                terms=custom_cleanco_terms if custom_cleanco_terms is not None else cleanco.prepare_default_terms(),
                 prefix=True,
                 middle=True,
                 suffix=True,
@@ -103,6 +110,8 @@ def create_func_dict(use_spark: bool = True) -> dict[str, Callable[[Any], Any] |
         "remove_newline": F.regex_replace(r"\n|\r", " "),
         # replace atypical dashes
         "replace_punctuation": F.regex_replace("[\u2013\u2014\u2015]", "-"),
+        # identity function that returns strings as-is for no preprocessing
+        "identity": F.run_custom_function(lambda x: x),
     }
 
 
