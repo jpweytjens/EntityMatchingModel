@@ -39,6 +39,8 @@ class PandasPreprocessor(TransformerMixin, AbstractPreprocessor):
         input_col: str = "name",
         output_col: str = "preprocessed",
         spark_session: Any | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
     ) -> None:
         """Pandas implementation of Name Preprocessor
 
@@ -68,10 +70,22 @@ class PandasPreprocessor(TransformerMixin, AbstractPreprocessor):
 
         """
         super().__init__()
-        AbstractPreprocessor.__init__(self, preprocess_pipeline, input_col, output_col, spark_session)
+        AbstractPreprocessor.__init__(
+            self,
+            preprocess_pipeline,
+            input_col,
+            output_col,
+            spark_session,
+            custom_legal_abbreviations,
+            custom_cleanco_terms,
+        )
 
     def create_func_dict(self) -> Mapping[str, Callable]:
-        return create_func_dict(use_spark=False)
+        return create_func_dict(
+            use_spark=False,
+            custom_legal_abbreviations=self.custom_legal_abbreviations,
+            custom_cleanco_terms=self.custom_cleanco_terms,
+        )
 
     def fit(self, *args: Any, **kwargs: Any) -> TransformerMixin:
         """Dummy function, this class does not require fitting
