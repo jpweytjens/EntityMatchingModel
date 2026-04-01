@@ -70,6 +70,12 @@ class PandasEntityMatching(BaseEntityMatching):
         aggregation_layer: bool | None = None,
         aggregation_method: Literal["mean_score", "max_frequency_nm_score"] | None = None,
         carry_on_cols: list[str] | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
+        use_existing_lef: bool = True,
+        lef_col: str | None = None,
+        detailed_match: bool = False,
+        business_type: bool = False,
         **kwargs,
     ) -> None:
         """Implementation of EntityMatching using Pandas dataframes as a data format.
@@ -132,7 +138,12 @@ class PandasEntityMatching(BaseEntityMatching):
         preprocessor = params["preprocessor"]
         if isinstance(preprocessor, AbstractPreprocessor):
             return preprocessor
-        return PandasPreprocessor(preprocess_pipeline=preprocessor, spark_session=params.get("spark_session"))
+        return PandasPreprocessor(
+            preprocess_pipeline=preprocessor,
+            spark_session=params.get("spark_session"),
+            custom_legal_abbreviations=params.get("custom_legal_abbreviations"),
+            custom_cleanco_terms=params.get("custom_cleanco_terms"),
+        )
 
     def _create_indexers(self) -> list[TransformerMixin]:
         params = self.parameters
@@ -286,6 +297,9 @@ class PandasEntityMatching(BaseEntityMatching):
                 columns += ["country"]
             if self.parameters["aggregation_layer"]:
                 columns += ["account", "counterparty_account_count_distinct"]
+            if self.parameters["with_legal_entity_forms_match"]:
+                columns += ["lef"]
+
             # keep all carry-on columns that are found
             if self.parameters.get("carry_on_cols", []):
                 extra_cols = [c for c in self.parameters["carry_on_cols"] if c not in columns and c in names_df.columns]
@@ -501,6 +515,10 @@ class PandasEntityMatching(BaseEntityMatching):
             score_columns=score_columns,
             with_legal_entity_forms_match=self.parameters.get("with_legal_entity_forms_match", False),
             extra_features=extra_features,
+            custom_cleanco_terms=self.parameters.get("custom_cleanco_terms"),
+            detailed_match=self.parameters.get("detailed_match"),
+            business_type=self.parameters.get("business_type"),
+            use_existing_lef=self.parameters.get("use_existing_lef"),
             **fit_kws,
         )
         # add new supervised model to self.model pipeline
