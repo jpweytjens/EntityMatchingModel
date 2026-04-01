@@ -294,9 +294,8 @@ def train_test_model(
     dataset_scored = pd.concat([train_df, valid_df])
 
     # Compute rank column
-    dataset_scored["nm_score_rank"] = dataset_scored.groupby("uid", group_keys=False)["nm_score"].apply(
-        lambda x: x.rank(ascending=False, method="first", na_option="bottom")
-    )
+    dataset_scored = dataset_scored.sort_values(['uid', 'nm_score'], ascending=[True, False], na_position='last')
+    dataset_scored["nm_score_rank"] = dataset_scored.groupby('uid').cumcount() + 1
     dataset_scored[f"{benchmark_col}_rank"] = dataset_scored.groupby("uid", group_keys=False)[benchmark_col].apply(
         lambda x: x.rank(ascending=False, method="first", na_option="bottom")
     )

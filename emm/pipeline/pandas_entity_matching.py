@@ -206,7 +206,9 @@ class PandasEntityMatching(BaseEntityMatching):
         if aggregation_layer:
             return PandasEntityAggregation(
                 score_col="nm_score" if self.parameters["supervised_on"] else "score_0",
-                freq_col=self.parameters["freq_col"],
+                # Use the post-normalization column name; _normalize_column_names() always
+                # renames the user's freq_col to "counterparty_account_count_distinct".
+                freq_col="counterparty_account_count_distinct",
                 aggregation_method=self.parameters["aggregation_method"],
                 blacklist=self.parameters.get("aggregation_blacklist", []),
             )
