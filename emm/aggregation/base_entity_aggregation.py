@@ -81,7 +81,7 @@ def _max_frequency_nm_score_aggregation(
     # 3a. pick the most frequent name of each account-grid combi: one-name summary information
     group_key = tuple(best_match_df[group].to_numpy()[0])
     one_accountname_df = df_grouped.get_group(group_key).sort_values(["freq_score"], ascending=False).head(1)
-    df = one_accountname_df.drop(columns=["freq_score"]).copy()
+    df = one_accountname_df.copy()
     df["agg_score"] = best_match_df["agg_score"].to_numpy()[0]
     return df
 

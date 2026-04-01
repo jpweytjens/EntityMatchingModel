@@ -210,7 +210,7 @@ class PandasSupervisedLayerTransformer(TransformerMixin, BaseSupervisedModel):
         # groupby preserves the order of the rows in each group. See:
         # https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.groupby.html (sort)
         gb = X.groupby(group_cols)
-        X[best_rank_col] = gb[best_score_col].transform(lambda x: range(1, len(x) + 1))
+        X[best_rank_col] = gb.cumcount() + 1
 
         # indicate the best match out of all candidates, also requires not-null and > 0.
         X[best_match_col] = (X[best_rank_col] == 1) & (X[best_score_col].notnull()) & (X[best_score_col] > 0)
