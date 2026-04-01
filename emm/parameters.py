@@ -70,6 +70,12 @@ MODEL_PARAMS = {
     "unpersist_broadcast": False,  # after spark indexer transform, free up memory that has been broadcast.
     "with_no_matches": False,  # if true, for each name with no match add an artificial name-pair candidate row.
     "carry_on_cols": [],  # list of column names that should always be copied to the dataframe with candidates if present. GT columns get prefix 'gt_'.
+    "custom_legal_abbreviations": None,
+    "custom_cleanco_terms": None,
+    "use_existing_lef": True,  # if True, check for existing LEF columns before extracting LEF features
+    "lef_col": None,  # single column name for LEF (overrides lef1_col/lef2_col if provided)
+    "detailed_match": False,  # if True, enable detailed matching features for LEF
+    "business_type": False,  # if True, enable business type features for LEF
 }
 
 # default indexer settings. These are picked up when corresponding settings are missing in MODEL_PARAMS["indexers"]
@@ -95,7 +101,7 @@ DEFAULT_INDEXER_PARAMS = {
 }
 
 # list of column names that should always be copied to the dataframe with candidates if present
-DEFAULT_CARRY_ON_COLS = ["name", "preprocessed", "country", "account", "counterparty_account_count_distinct"]
+DEFAULT_CARRY_ON_COLS = ["name", "preprocessed", "country", "account", "counterparty_account_count_distinct", "lef"]
 
 # update indexer settings with default values in case missing in MODEL_PARAMS["indexers"]
 MODEL_PARAMS["indexers"] = util.indexers_set_values(DEFAULT_INDEXER_PARAMS, MODEL_PARAMS["indexers"])
