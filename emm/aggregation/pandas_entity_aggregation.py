@@ -116,7 +116,7 @@ class PandasEntityAggregation(TransformerMixin, BaseEntityAggregation):
         """Vectorized version of transform().
 
         Replaces the per-account groupby().apply(matching_max_candidate) with
-        bulk vectorized operations.
+        bulk vectorized operations for both mean_score and max_frequency_nm_score.
         """
         if X is None:
             return None
@@ -151,41 +151,12 @@ class PandasEntityAggregation(TransformerMixin, BaseEntityAggregation):
             )
 
             if len(mpl_match_df) > 0:
-                # --- VECTORIZED AGGREGATION (replaces groupby().apply()) ---
-
-                # Step 1: Calculate freq_score for all rows
-                mpl_match_df["freq_score"] = (
-                    mpl_match_df[self.freq_col] * mpl_match_df[self.score_col]
-                )
-
-                # Step 2: Aggregate by (account, gt_entity_id, gt_uid)
-                # Note: gt_group depends on aggregation_method
                 gt_group = self.get_gt_group()
-                agg_df = (
-                    mpl_match_df.groupby(gt_group, dropna=False)
-                    .agg({self.freq_col: "sum", "freq_score": "sum"})
-                    .reset_index()
-                )
-                agg_df[self.output_col] = agg_df["freq_score"] / agg_df[self.freq_col]
 
-                # Step 3: Find best gt match per account (highest freq_score)
-                # group contains account_col and possibly other columns like entity_id
-                account_cols = [c for c in group if c in agg_df.columns]
-                idx_best = agg_df.groupby(account_cols)["freq_score"].idxmax()
-                best_per_account = agg_df.loc[idx_best]
-
-                # Step 4: Get the representative row for each best match
-                # Join back to get original row data
-                merge_cols = gt_group  # [gt_entity_id, gt_uid, account] or similar
-                cl_match_df = mpl_match_df.merge(
-                    best_per_account[merge_cols + [self.output_col]],
-                    on=merge_cols,
-                    how="inner",
-                )
-
-                # Pick one row per account (highest freq_score)
-                cl_match_df = cl_match_df.sort_values("freq_score", ascending=False)
-                cl_match_df = cl_match_df.drop_duplicates(subset=account_cols, keep="first")
+                if self.aggregation_method == "mean_score":
+                    cl_match_df = self._vectorized_mean_score(mpl_match_df, group, gt_group)
+                else:
+                    cl_match_df = self._vectorized_max_freq(mpl_match_df, group, gt_group)
             else:
                 cl_match_df = mpl_match_df
 
@@ -200,6 +171,43 @@ class PandasEntityAggregation(TransformerMixin, BaseEntityAggregation):
             timer.log_param("cands", len(res))
 
         return res
+
+    def _vectorized_mean_score(self, df, group, gt_group):
+        """Vectorized mean_score: average score per gt match, pick best per account."""
+        # Mean score per gt match, broadcast back to each row
+        df[self.output_col] = df.groupby(gt_group, dropna=False)[self.score_col].transform("mean")
+        # Pick best gt match per account: highest agg_score, break ties by raw score
+        df = df.sort_values([self.output_col, self.score_col], ascending=False)
+        return df.drop_duplicates(subset=group, keep="first")
+
+    def _vectorized_max_freq(self, df, group, gt_group):
+        """Vectorized max_frequency_nm_score: frequency-weighted score, pick best per account."""
+        # Step 1: freq-weighted score per row
+        df["freq_score"] = df[self.freq_col] * df[self.score_col]
+
+        # Step 2: Aggregate by gt_group (e.g. [gt_entity_id, gt_uid, account])
+        agg_df = (
+            df.groupby(gt_group, dropna=False)
+            .agg({self.freq_col: "sum", "freq_score": "sum"})
+            .reset_index()
+        )
+        agg_df[self.output_col] = agg_df["freq_score"] / agg_df[self.freq_col]
+
+        # Step 3: Best gt match per account (highest freq_score)
+        account_cols = [self.account_col]
+        idx_best = agg_df.groupby(account_cols)["freq_score"].idxmax()
+        best_per_account = agg_df.loc[idx_best]
+
+        # Step 4: Join back to get original row data
+        cl_match_df = df.merge(
+            best_per_account[gt_group + [self.output_col]],
+            on=gt_group,
+            how="inner",
+        )
+
+        # Pick one representative row per account (highest freq_score)
+        cl_match_df = cl_match_df.sort_values("freq_score", ascending=False)
+        return cl_match_df.drop_duplicates(subset=account_cols, keep="first")
 
     def remove_blacklisted_names(self, df: pd.DataFrame, preprocessed_col: str = "preprocessed"):
         # filter out all processed names that are in blacklist or empty.
