@@ -77,6 +77,9 @@ DEFINED_PIPELINE_DICT = {
         "handle_trim",
         "remove_extra_space",
     ],
+    "no_preprocessing": [
+        "identity",  # returns strings as-is, assumes they are already preprocessed
+    ],
 }
 
 
@@ -89,18 +92,21 @@ class AbstractPreprocessor(Module):
         input_col: str = "name",
         output_col: str = "preprocessed",
         spark_session: Any | None = None,
+        custom_legal_abbreviations: list | None = None,
+        custom_cleanco_terms: list | None = None,
     ) -> None:
         """Base class of Name Preprocessor
 
         Cleaning and standardization of input names and their legal entity forms. Perform string cleaning, to-lower,
         remove punctuation and white spaces, convert legal entity forms to standard abbreviations.
 
-        Four predefined options for "preprocess_pipeline":
+        Five predefined options for "preprocess_pipeline":
 
         - "preprocess_name": normal cleaning, remove punctuation, handle unicode, lower and trim
         - "preprocess_with_punctuation": normal cleaning. punctuation will be kept, insert spaces around it.
         - "preprocess_merge_abbr": normal cleaning. merge all abbreviations. (default.)
         - "preprocess_merge_legal_abbr": normal cleaning. merge only legal form abbreviation.
+        - "no_preprocessing": returns strings as-is, assumes they are already preprocessed.
 
         See `emm.preprocessing.base_name_preprocessor.DEFINED_PIPELINE_DICT` for details.
 
@@ -114,6 +120,8 @@ class AbstractPreprocessor(Module):
         self.input_col = input_col
         self.output_col = output_col
         self.spark_session = spark_session
+        self.custom_legal_abbreviations = custom_legal_abbreviations
+        self.custom_cleanco_terms = custom_cleanco_terms
         if isinstance(preprocess_pipeline, list):  # custom pipeline
             self.preprocess_list = preprocess_pipeline
         elif isinstance(preprocess_pipeline, str):  # defined pipeline (type==str)
@@ -124,4 +132,7 @@ class AbstractPreprocessor(Module):
         super().__init__()
 
     def create_func_dict(self) -> dict[str, Any]:
-        return create_func_dict()
+        return create_func_dict(
+            custom_legal_abbreviations=self.custom_legal_abbreviations,
+            custom_cleanco_terms=self.custom_cleanco_terms,
+        )
