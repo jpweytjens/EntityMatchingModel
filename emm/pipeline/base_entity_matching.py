@@ -145,24 +145,33 @@ class BaseEntityMatching(Pipeline, ABC):
             else:
                 if "X" in self.supervised_models and overwrite:
                     logger.info('Model key "X" already in use, will be overwritten.')
+                # Prepare feature args based on lef_col parameter
+                feature_args = {}
+
                 self.supervised_models["X"] = {
                     "description": "calculate sm features only",
-                    "model": create_new_model_pipeline(),
+                    "model": create_new_model_pipeline(
+                        feature_args=feature_args, custom_cleanco_terms=self.parameters.get("custom_cleanco_terms")
+                    ),
                     "enable": False,  # Note: full model is not enabled, only for calc features
                 }
 
     def _normalize_column_names(self, df):
-        return rename_columns(
-            df,
-            [
-                (self.parameters["entity_id_col"], "entity_id"),
-                (self.parameters["uid_col"], "uid"),
-                (self.parameters["name_col"], "name"),
-                (self.parameters["country_col"], "country"),
-                (self.parameters["account_col"], "account"),
-                (self.parameters["freq_col"], "counterparty_account_count_distinct"),
-            ],
-        )
+        mappings = [
+            (self.parameters["entity_id_col"], "entity_id"),
+            (self.parameters["uid_col"], "uid"),
+            (self.parameters["name_col"], "name"),
+            (self.parameters["country_col"], "country"),
+            (self.parameters["account_col"], "account"),
+            (self.parameters["freq_col"], "counterparty_account_count_distinct"),
+        ]
+
+        # Handle LEF column mapping
+        if self.parameters["with_legal_entity_forms_match"]:
+            # Single LEF column mode - both train/test and ground truth use same column name, normalized to "lef"
+            mappings.append((self.parameters["lef_col"], "lef"))
+
+        return rename_columns(df, mappings)
 
     def _check_relevant_columns_present(self, df, ground_truth=False):
         """Check all required columns are present given emm setup
