@@ -28,6 +28,18 @@ from emm.preprocessing.abbreviation_util import preprocess
 if TYPE_CHECKING:
     import pandas as pd
 
+# Aliases for aggregation methods — clearer names that map to the canonical ones.
+AGGREGATION_METHOD_ALIASES = {
+    "freq_weighted_name": "max_frequency_nm_score",
+    "freq_weighted_entity": "multi_name_max_frequency_nm_score",
+    "mean_name": "mean_score",
+}
+
+
+def _resolve_aggregation_method(method: str) -> str:
+    """Resolve an aggregation method alias to its canonical name."""
+    return AGGREGATION_METHOD_ALIASES.get(method, method)
+
 
 def _mean_score_aggregation(df, group, score_col, output_col):
     # set dropna to False to keep no_candidate rows
@@ -95,7 +107,8 @@ def matching_max_candidate(
     freq_col: str,
     output_col: str,
     aggregation_method: Literal[
-        "multi_name_max_frequency_nm_score", "max_frequency_nm_score", "mean_score"
+        "multi_name_max_frequency_nm_score", "max_frequency_nm_score", "mean_score",
+        "freq_weighted_name", "freq_weighted_entity", "mean_name",
     ] = "max_frequency_nm_score",
 ) -> pd.DataFrame:
     """This function aggregates all the names and its candidates of an account.
@@ -118,6 +131,7 @@ def matching_max_candidate(
         msg = "Provided an empty df"
         raise ValueError(msg)
 
+    aggregation_method = _resolve_aggregation_method(aggregation_method)
     df = df.copy()
 
     if aggregation_method == "mean_score":
@@ -145,11 +159,13 @@ class BaseEntityAggregation(Pipeline):
         gt_preprocessed_col: str = "gt_preprocessed",
         correct_col: str = "correct",
         aggregation_method: Literal[
-            "multi_name_max_frequency_nm_score", "max_frequency_nm_score", "mean_score"
+            "multi_name_max_frequency_nm_score", "max_frequency_nm_score", "mean_score",
+            "freq_weighted_name", "freq_weighted_entity", "mean_name",
         ] = "max_frequency_nm_score",
         blacklist: list | None = None,
         positive_set_col: str = "positive_set",
     ) -> None:
+        aggregation_method = _resolve_aggregation_method(aggregation_method)
         self.score_col = score_col
         self.account_col = account_col
         self.index_col = index_col
