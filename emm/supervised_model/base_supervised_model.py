@@ -38,7 +38,10 @@ class BaseSupervisedModel(Module):
 
 
 def create_new_model_pipeline(
-    name_only: bool = True, feature_args: dict | None = None, xgb_args: dict | None = None
+    name_only: bool = True,
+    feature_args: dict | None = None,
+    xgb_args: dict | None = None,
+    custom_cleanco_terms: list | None = None,
 ) -> Pipeline:
     default_feature_args = {
         "name1_col": "preprocessed",
@@ -51,6 +54,10 @@ def create_new_model_pipeline(
         "without_rank_features": False,
         "with_legal_entity_forms_match": False,
         "drop_features": [],
+        "custom_cleanco_terms": custom_cleanco_terms,
+        "detailed_match": False,
+        "business_type": False,
+        "use_existing_lef": True,
     }
     feature_args = {k: v for k, v in feature_args.items() if v is not None} if feature_args is not None else {}
     default_feature_args.update(feature_args)
@@ -132,6 +139,10 @@ def train_model(
     n_jobs=-1,
     positive_only=False,
     extra_features=None,
+    custom_cleanco_terms=None,
+    detailed_match=False,
+    business_type=False,
+    use_existing_lef=True,
     **feature_kws,
 ):
     """Train the supervised pipeline
@@ -154,6 +165,9 @@ def train_model(
         extra_features: list of columns (and possibly functions) used for extra features calculation,
                         e.g. country if name_only=False, default is None.
                         With ``name_only=False`` internally ``extra_features=['country']``.
+        custom_cleanco_terms: Optional custom terms for cleanco. default is None.
+        detailed_match: if True, enable detailed matching features. default is False.
+        business_type: if True, enable business type features. default is False.
         feature_kws: extra kwargs passed on to model init function.
 
     Returns:
@@ -183,10 +197,16 @@ def train_model(
             "with_legal_entity_forms_match": with_legal_entity_forms_match,
             "drop_features": drop_features,
             "extra_features": extra_features,
+            "custom_cleanco_terms": custom_cleanco_terms,
+            "detailed_match": detailed_match,
+            "business_type": business_type,
+            "use_existing_lef": use_existing_lef,
         }
         feature_args.update(feature_kws)
         xgb_args = {"n_jobs": n_jobs}
-        model = create_new_model_pipeline(name_only=name_only, feature_args=feature_args, xgb_args=xgb_args)
+        model = create_new_model_pipeline(
+            name_only=name_only, feature_args=feature_args, xgb_args=xgb_args, custom_cleanco_terms=custom_cleanco_terms
+        )
     else:
         model = custom_model
 
