@@ -74,6 +74,12 @@ class PandasFeatureExtractor(TransformerMixin, BaseFeatureExtractor):
         with_legal_entity_forms_match: bool = False,
         fillna_value: float | None = None,
         drop_features: list[str] | None = None,
+        custom_cleanco_terms: list | None = None,
+        use_existing_lef: bool = True,
+        lef1_col: str = "lef",
+        lef2_col: str = "gt_lef",
+        detailed_match: bool = False,
+        business_type: bool = False,
     ) -> None:
         self.name1_col = name1_col
         self.name2_col = name2_col
@@ -86,6 +92,12 @@ class PandasFeatureExtractor(TransformerMixin, BaseFeatureExtractor):
         self.with_legal_entity_forms_match = with_legal_entity_forms_match
         self.fillna_value = fillna_value
         self.drop_features = drop_features
+        self.custom_cleanco_terms = custom_cleanco_terms
+        self.use_existing_lef = use_existing_lef
+        self.lef1_col = lef1_col
+        self.lef2_col = lef2_col
+        self.detailed_match = detailed_match
+        self.business_type = business_type
         super().__init__()
 
         self.name_features = {
@@ -147,7 +159,19 @@ class PandasFeatureExtractor(TransformerMixin, BaseFeatureExtractor):
                 ),
             ]
         if self.with_legal_entity_forms_match:
-            funcs.append(partial(calc_lef_features, name1=self.name1_col, name2=self.name2_col))
+            funcs.append(
+                partial(
+                    calc_lef_features,
+                    name1=self.name1_col,
+                    name2=self.name2_col,
+                    custom_cleanco_terms=self.custom_cleanco_terms,
+                    use_existing_lef=self.use_existing_lef,
+                    lef1_col=self.lef1_col,
+                    lef2_col=self.lef2_col,
+                    detailed_match=self.detailed_match,
+                    business_type=self.business_type,
+                )
+            )
         return funcs
 
     def transform(self, X: pd.DataFrame) -> pd.DataFrame:
