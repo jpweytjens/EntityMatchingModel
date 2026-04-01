@@ -27,6 +27,8 @@ import pandas as pd
 from cleanco.clean import normalize_terms, normalized, strip_punct, strip_tail
 from cleanco.termdata import terms_by_type
 
+from emm.loggers.logger import logger
+
 LEGAL_TERMS = cleanco.clean.prepare_default_terms()
 NO_LEF = "no_lef"
 UNKNOWN_LEF = "unknown_lef"
@@ -217,48 +219,74 @@ def calc_lef_features(
     name2: str = "gt_preprocessed",
     business_type: bool = False,
     detailed_match: bool = False,
+    custom_cleanco_terms: list | None = None,
+    use_existing_lef: bool = True,
+    lef1_col: str = "lef",
+    lef2_col: str = "gt_lef",
 ) -> pd.DataFrame:
     """Determine legal entity form-based features of both names using cleanco
 
     Args:
         df: candidates dataframe.
         name1: column of name1, default is "preprocessed".
-        name2: column of name1, default is "gt_preprocessed".
+        name2: column of name2, default is "gt_preprocessed".
         business_type: if True, determine match of general international business type (from LEF).
-        detailed_match: if True, store both legal entity forms (and possibly business types).
-        n_jobs: desired number of parallel jobs. default is 1.
+        detailed_match: if True, store both legal entity forms (and possibly business types) as separate columns.
+                       When enabled, adds columns: 'lef1', 'lef2', 'legal_entity_forms'.
+                       These are only returned when return_sm_features=True in the pipeline.
+        custom_cleanco_terms: Optional custom terms for cleanco. default is None.
+        use_existing_lef: if True, check for existing LEF columns before extracting LEF features.
+                         If existing columns are found, they are used instead of extracting from names.
+        lef1_col: column name for LEF from input data (name1). default is "lef1".
+        lef2_col: column name for LEF from ground truth data (name2). default is "lef2".
 
     Returns:
-        dataframe with match of legal entity forms.
+        dataframe with match of legal entity forms. Always includes 'match_legal_entity_form' column.
+        When detailed_match=True, also includes 'lef1', 'lef2', 'legal_entity_forms' columns.
+        When business_type=True, also includes 'match_business_type' column and optionally 'business_types'.
     """
     for name in [name1, name2]:
         if name not in df.columns:
             msg = f"column {name} not in dataframe"
             raise ValueError(msg)
 
+    terms = custom_cleanco_terms if custom_cleanco_terms is not None else LEGAL_TERMS
+
     tmp = pd.DataFrame(index=df.index)
     res = pd.DataFrame(index=df.index)
 
     # legal entity forms
-    tmp["lef1"] = df[name1].apply(extract_lef)
-    tmp["lef2"] = df[name2].apply(extract_lef)
+    if lef1_col in df.columns and use_existing_lef:
+        logger.info(f"Using existing lef column: {lef1_col}")
+        tmp[lef1_col] = df[lef1_col].fillna("NO_LEF")
+    else:
+        tmp[lef1_col] = df[name1].apply(extract_lef, terms=terms)
+
+    if lef2_col in df.columns and use_existing_lef:
+        logger.info(f"Using existing lef column: {lef2_col}")
+        tmp[lef2_col] = df[lef2_col].fillna("NO_LEF")
+    else:
+        tmp[lef2_col] = df[name2].apply(extract_lef, terms=terms)
+
     # determine match
-    res["match_legal_entity_form"] = tmp.apply(lambda x: matching_legal_terms(x["lef1"], x["lef2"]), axis=1).astype(
+    res["match_legal_entity_form"] = tmp.apply(lambda x: matching_legal_terms(x[lef1_col], x[lef2_col]), axis=1).astype(
         "category"
     )
 
     # general (international) business type
     if business_type:
         # extract general international business type from LEF
-        tmp["bt1"] = tmp["lef1"].apply(get_business_type)
-        tmp["bt2"] = tmp["lef2"].apply(get_business_type)
+        tmp["bt1"] = tmp[lef1_col].apply(get_business_type)
+        tmp["bt2"] = tmp[lef2_col].apply(get_business_type)
         # determine match
         res["match_business_type"] = tmp.apply(lambda x: matching_legal_terms(x["bt1"], x["bt2"]), axis=1).astype(
             "category"
         )
 
     if detailed_match:
-        res["legal_entity_forms"] = tmp.apply(lambda x: make_combi(x["lef1"], x["lef2"]), axis=1).astype("category")
+        res["legal_entity_forms"] = tmp.apply(lambda x: make_combi(x[lef1_col], x[lef2_col]), axis=1).astype("category")
+        res["lef1"] = tmp[lef1_col].astype("category")
+        res["lef2"] = tmp[lef2_col].astype("category")
 
         if business_type:
             res["business_types"] = tmp.apply(lambda x: make_combi(x["bt1"], x["bt2"]), axis=1).astype("category")
