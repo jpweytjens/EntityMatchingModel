@@ -297,7 +297,7 @@ class PandasEntityMatching(BaseEntityMatching):
                 columns += ["country"]
             if self.parameters["aggregation_layer"]:
                 columns += ["account", "counterparty_account_count_distinct"]
-            if self.parameters["with_legal_entity_forms_match"]:
+            if self.parameters["with_legal_entity_forms_match"] and "lef" in names_df.columns:
                 columns += ["lef"]
 
             # keep all carry-on columns that are found
