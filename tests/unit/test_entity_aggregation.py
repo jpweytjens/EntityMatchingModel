@@ -70,7 +70,7 @@ def test_matching_max_freq_score_candidate(sample_one_cluster_candidates):
         aggregation_method="max_frequency_nm_score",
     )
 
-    assert set(match_result2.columns) == {*df.columns.tolist(), "agg_score"}
+    assert set(match_result2.columns) == {*df.columns.tolist(), "agg_score", "freq_score"}
 
     match_result2 = match_result2[match_expected2.columns].reset_index(drop=True)
     pd.testing.assert_frame_equal(match_result2, match_expected2)
@@ -115,7 +115,7 @@ def test_matching_max_freq_score_candidate_several_clusters(sample_two_cluster_c
         output_col="agg_score",
         aggregation_method="max_frequency_nm_score",
     )
-    assert set(match_result.columns) == {*df.columns.tolist(), "agg_score"}
+    assert set(match_result.columns) == {*df.columns.tolist(), "agg_score", "freq_score"}
     match_result = match_result[match_expected.columns].reset_index(drop=True)
 
     pd.testing.assert_frame_equal(match_result, match_expected)
