@@ -208,7 +208,11 @@ class SparkEntityMatching(
         if isinstance(preprocessor, AbstractPreprocessor):
             self.pipeline_preprocessor = preprocessor
         else:
-            self.pipeline_preprocessor = SparkPreprocessor(preprocessor)
+            self.pipeline_preprocessor = SparkPreprocessor(
+                preprocessor,
+                custom_legal_abbreviations=self.parameters.get("custom_legal_abbreviations"),
+                custom_cleanco_terms=self.parameters.get("custom_cleanco_terms"),
+            )
         stages += [self.pipeline_preprocessor]
         # step 2: Candidate name-pair selection (= indexing)
         self.pipeline_candidate_selection = self._create_multiple_indexers(self.parameters)
