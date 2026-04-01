@@ -87,14 +87,15 @@ class PandasNormalizedTfidfVectorizer(TfidfVectorizer):
             self.max_idf_square = idf_diag.max() ** 2
 
             # 2. ensure compatibility between sklearn and spark tfidf vectors
+            # Subtract 1 from IDF to match Spark's log(n/df) formula instead of sklearn's log(n/df)+1.
+            # In sklearn < 1.5, IDF is stored as a sparse diagonal matrix (_idf_diag) and the idf_
+            # property reads from it; setting idf_ rebuilds _idf_diag and may upcast dtype.
+            # In sklearn >= 1.5, _idf_diag was removed and idf_ is a plain array.
             if hasattr(self._tfidf, "_idf_diag"):
-                # sklearn < 1.5
                 self._tfidf._idf_diag = idf_diag
-                assert self._tfidf._idf_diag.dtype == self.dtype
             else:
-                # sklearn >= 1.5
-                self.idf_ = self.idf_ - np.ones(n_features, dtype=self.dtype)
-                assert self.idf_.dtype == self.dtype
+                self.idf_ = (self.idf_ - np.ones(n_features, dtype=self.dtype)).astype(self.dtype)
+            assert self.idf_.dtype == self.dtype
 
             timer.log_params({"n": len(X), "n_features": idf_diag.shape[0]})
 
