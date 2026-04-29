@@ -255,40 +255,56 @@ def calc_lef_features(
     tmp = pd.DataFrame(index=df.index)
     res = pd.DataFrame(index=df.index)
 
-    # legal entity forms
+    # legal entity forms — extract once per unique input name, then map back to rows
     if lef1_col in df.columns and use_existing_lef:
         logger.info(f"Using existing lef column: {lef1_col}")
         tmp[lef1_col] = df[lef1_col].fillna("NO_LEF")
     else:
-        tmp[lef1_col] = df[name1].apply(extract_lef, terms=terms)
+        lef1_map = {n: extract_lef(n, terms=terms) for n in df[name1].unique()}
+        tmp[lef1_col] = df[name1].map(lef1_map)
 
     if lef2_col in df.columns and use_existing_lef:
         logger.info(f"Using existing lef column: {lef2_col}")
         tmp[lef2_col] = df[lef2_col].fillna("NO_LEF")
     else:
-        tmp[lef2_col] = df[name2].apply(extract_lef, terms=terms)
+        lef2_map = {n: extract_lef(n, terms=terms) for n in df[name2].unique()}
+        tmp[lef2_col] = df[name2].map(lef2_map)
 
-    # determine match
-    res["match_legal_entity_form"] = tmp.apply(lambda x: matching_legal_terms(x[lef1_col], x[lef2_col]), axis=1).astype(
-        "category"
-    )
+    # determine match — call scalar matching_legal_terms once per unique (lef1, lef2) pair
+    res["match_legal_entity_form"] = _matching_terms_vectorized(tmp[lef1_col], tmp[lef2_col]).astype("category")
 
     # general (international) business type
     if business_type:
-        # extract general international business type from LEF
-        tmp["bt1"] = tmp[lef1_col].apply(get_business_type)
-        tmp["bt2"] = tmp[lef2_col].apply(get_business_type)
-        # determine match
-        res["match_business_type"] = tmp.apply(lambda x: matching_legal_terms(x["bt1"], x["bt2"]), axis=1).astype(
-            "category"
-        )
+        # call get_business_type once per unique LEF string (shared across both columns)
+        unique_lefs = pd.unique(np.concatenate([tmp[lef1_col].values, tmp[lef2_col].values]))
+        bt_map = {lef: get_business_type(lef) for lef in unique_lefs}
+        tmp["bt1"] = tmp[lef1_col].map(bt_map)
+        tmp["bt2"] = tmp[lef2_col].map(bt_map)
+        res["match_business_type"] = _matching_terms_vectorized(tmp["bt1"], tmp["bt2"]).astype("category")
 
     if detailed_match:
-        res["legal_entity_forms"] = tmp.apply(lambda x: make_combi(x[lef1_col], x[lef2_col]), axis=1).astype("category")
+        res["legal_entity_forms"] = _make_combi_vectorized(tmp[lef1_col], tmp[lef2_col]).astype("category")
         res["lef1"] = tmp[lef1_col].astype("category")
         res["lef2"] = tmp[lef2_col].astype("category")
 
         if business_type:
-            res["business_types"] = tmp.apply(lambda x: make_combi(x["bt1"], x["bt2"]), axis=1).astype("category")
+            res["business_types"] = _make_combi_vectorized(tmp["bt1"], tmp["bt2"]).astype("category")
 
     return res
+
+
+def _matching_terms_vectorized(term1: pd.Series, term2: pd.Series) -> pd.Series:
+    """Apply `matching_legal_terms` row-wise via per-unique-pair caching.
+
+    `term1` and `term2` typically draw from a small pool of LEF strings, so the
+    number of distinct (term1, term2) pairs is far smaller than `len(term1)`.
+    Compute the scalar result once per unique pair, then map back to rows.
+    """
+    pairs = list(zip(term1.values, term2.values))
+    pair_map = {p: matching_legal_terms(*p) for p in set(pairs)}
+    return pd.Series([pair_map[p] for p in pairs], index=term1.index)
+
+
+def _make_combi_vectorized(joined1: pd.Series, joined2: pd.Series) -> pd.Series:
+    """Vectorized `make_combi`: replace empty strings with `NO_LEF` and concat with `__`."""
+    return joined1.where(joined1 != "", NO_LEF) + "__" + joined2.where(joined2 != "", NO_LEF)

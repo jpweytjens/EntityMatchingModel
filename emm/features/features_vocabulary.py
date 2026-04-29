@@ -134,20 +134,19 @@ def compute_vocabulary_features(
 
     common_words = common_words or set()
     very_common_words = very_common_words or set()
-    vocab = common_words | very_common_words
 
-    very_common_hits = hits.apply(lambda x: sum(1 for y in x if y in very_common_words))
-    common_hits = hits.apply(lambda x: sum(1 for y in x if y in common_words))
-    no_hits = hits.apply(lambda x: sum(1 for y in x if y not in vocab))
-
-    very_common_miss = misses.apply(lambda x: sum(1 for y in x if y in very_common_words))
-    common_miss = misses.apply(lambda x: sum(1 for y in x if y in common_words))
-    no_miss = misses.apply(lambda x: sum(1 for y in x if y not in vocab))
+    very_common_hits = hits.map(lambda s: len(s & very_common_words))
+    common_hits = hits.map(lambda s: len(s & common_words))
+    very_common_miss = misses.map(lambda s: len(s & very_common_words))
+    common_miss = misses.map(lambda s: len(s & common_words))
 
     n_hits = hits.map(len)
     n_total = total_wrds.map(len)
     n_set1 = word_set1.map(len)
     n_set2 = word_set2.map(len)
+
+    no_hits = n_hits - very_common_hits - common_hits
+    no_miss = (n_total - n_hits) - very_common_miss - common_miss
     ratio_overlap = (n_hits / n_total).replace(np.inf, 0)
     return pd.DataFrame(
         {
