@@ -17,6 +17,7 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import pickle
 import re
 
 import numpy as np
@@ -360,6 +361,13 @@ def test_rank_features(candidate_pairs):
     }
     res = c.transform(candidate_pairs)
     assert all(col in res.columns for col in rank_features)
+
+
+def test_feature_extractor_is_picklable(candidate_pairs):
+    """Serialization of trained models requires pickling the feature extractor (rapidfuzz>=3 functions are not picklable)"""
+    c = PandasFeatureExtractor(name1_col="name", name2_col="gt_name", uid_col="uid", score_columns=["score"])
+    c2 = pickle.loads(pickle.dumps(c))
+    pd.testing.assert_frame_equal(c.transform(candidate_pairs), c2.transform(candidate_pairs))
 
 
 def test_stability_of_features(kvk_candidate_pairs):
