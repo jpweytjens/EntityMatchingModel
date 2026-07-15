@@ -46,6 +46,36 @@ from emm.features.features_vocabulary import Vocabulary, compute_vocabulary_feat
 from emm.loggers import Timer
 
 
+# rapidfuzz>=3 functions are cython functions that cannot be pickled; these module-level
+# wrappers are pickled by reference instead, keeping serialization of trained models working.
+def token_sort_ratio(name1: str, name2: str) -> float:
+    return fuzz.token_sort_ratio(name1, name2)
+
+
+def token_set_ratio(name1: str, name2: str) -> float:
+    return fuzz.token_set_ratio(name1, name2)
+
+
+def partial_ratio(name1: str, name2: str) -> float:
+    return fuzz.partial_ratio(name1, name2)
+
+
+def w_ratio(name1: str, name2: str) -> float:
+    return fuzz.WRatio(name1, name2)
+
+
+def ratio(name1: str, name2: str) -> float:
+    return fuzz.ratio(name1, name2)
+
+
+def levenshtein_distance(name1: str, name2: str) -> int:
+    return Levenshtein.distance(name1, name2)
+
+
+def jaro_similarity(name1: str, name2: str) -> float:
+    return Jaro.similarity(name1, name2)
+
+
 class PandasFeatureExtractor(TransformerMixin, BaseFeatureExtractor):
     """Sklearn based transformer for calculating numeric features for candidate pairs (used by supervised model)
 
@@ -92,14 +122,14 @@ class PandasFeatureExtractor(TransformerMixin, BaseFeatureExtractor):
             "abbr_match": (abbr_match, "int8"),
             "abs_len_diff": (abs_len_diff, "int8"),
             "len_ratio": (len_ratio, "float32"),
-            "token_sort_ratio": (fuzz.token_sort_ratio, "int8"),
-            "token_set_ratio": (fuzz.token_set_ratio, "int8"),
-            "partial_ratio": (fuzz.partial_ratio, "int8"),
-            "w_ratio": (fuzz.WRatio, "int8"),
-            "ratio": (fuzz.ratio, "int8"),
+            "token_sort_ratio": (token_sort_ratio, "int8"),
+            "token_set_ratio": (token_set_ratio, "int8"),
+            "partial_ratio": (partial_ratio, "int8"),
+            "w_ratio": (w_ratio, "int8"),
+            "ratio": (ratio, "int8"),
             "name_cut": (name_cut, "int8"),
-            "norm_ed": (Levenshtein.distance, "int8"),
-            "norm_jaro": (Jaro.similarity, "float32"),
+            "norm_ed": (levenshtein_distance, "int8"),
+            "norm_jaro": (jaro_similarity, "float32"),
         }
         self.rank_features = {
             "rank": rank,
