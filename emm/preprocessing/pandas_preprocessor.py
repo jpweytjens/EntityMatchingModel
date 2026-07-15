@@ -145,19 +145,25 @@ class PandasPreprocessor(TransformerMixin, AbstractPreprocessor):
 
     @staticmethod
     def _local_apply_steps(series: pd.Series, preprocess_list: list[Any], func_dict: Mapping[str, Any]) -> pd.Series:
+        # Every step in DEFINED_PIPELINE_DICT is a pure function of the input string,
+        # so we run the pipeline on unique inputs only and map results back to rows.
         with Timer("PandasPreprocessor._local_apply_steps") as timer:
+            unique_in = pd.Series(series.unique(), name=series.name)
+            unique_out = unique_in
             for preprocess_def in preprocess_list:
                 timer.label(preprocess_def)
                 func = (
                     func_dict[preprocess_def]
                     if isinstance(preprocess_def, str)
-                    else lambda series: series.map(preprocess_def)
+                    else lambda s: s.map(preprocess_def)
                 )
-                series = func(series)
+                unique_out = func(unique_out)
 
+            mapping = dict(zip(unique_in.values, unique_out.values))
             timer.log_param("n", len(series))
+            timer.log_param("n_unique", len(mapping))
 
-        return series
+        return series.map(mapping)
 
     def transform(self, dataset: pd.DataFrame, y=None) -> pd.DataFrame:
         """Apply preprocessing functions to input names in dataframe
