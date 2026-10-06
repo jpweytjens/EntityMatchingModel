@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import partial
 from typing import Callable
 
@@ -45,6 +46,14 @@ from emm.features.features_rank import (
 from emm.features.features_vocabulary import Vocabulary, compute_vocabulary_features, create_vocabulary
 from emm.loggers import Timer
 
+
+if fuzz.WRatio.__module__ == "rapidfuzz.fuzz_py":
+    warnings.warn(
+        "rapidfuzz is running its pure-Python fallback: name features are slow and differ from the compiled build. "
+        "Install rapidfuzz>=3.9 on a Python version it ships wheels for.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
 
 # rapidfuzz>=3 functions are cython functions that cannot be pickled; these module-level
 # wrappers are pickled by reference instead, keeping serialization of trained models working.

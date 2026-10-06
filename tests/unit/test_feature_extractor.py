@@ -17,12 +17,16 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import os
 import pickle
 import re
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
 import pytest
+from rapidfuzz import fuzz
 
 from emm.data.create_data import retrieve_kvk_test_sample
 from emm.features.features_extra import calc_extra_features
@@ -203,6 +207,28 @@ def test_name_features_match_rapidfuzz_2(feature, name1, name2, expected):
     value = np.array([func(name1, name2)]).astype(dtype)[0]
     assert value == pytest.approx(expected)
 
+
+
+def test_rapidfuzz_backend_is_compiled():
+    """The pure-Python fallback is about 20x slower and does not reproduce the compiled scores"""
+    assert fuzz.WRatio.__module__ != "rapidfuzz.fuzz_py"
+
+
+def _import_feature_extractor(rapidfuzz_implementation):
+    code = "import warnings; warnings.simplefilter('error'); import emm.features.pandas_feature_extractor"
+    env = {**os.environ, "RAPIDFUZZ_IMPLEMENTATION": rapidfuzz_implementation}
+    return subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=False)
+
+
+def test_pure_python_rapidfuzz_warns():
+    result = _import_feature_extractor("python")
+    assert result.returncode != 0
+    assert "RuntimeWarning" in result.stderr
+
+
+def test_compiled_rapidfuzz_does_not_warn():
+    result = _import_feature_extractor("cpp")
+    assert result.returncode == 0, result.stderr
 
 def test_compute_hits_misses():
     data = compute_vocabulary_features(
