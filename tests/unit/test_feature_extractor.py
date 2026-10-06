@@ -166,6 +166,44 @@ def test_name_features_functions(func_name, name1, name2, expected_value):
         assert expected_value == value_casted
 
 
+# Name features as computed by compiled rapidfuzz 2.15.2 (after the dtype cast in calc_name_features);
+# trained models depend on these values, so rapidfuzz 3.x must reproduce them.
+RAPIDFUZZ_2_FEATURES = ["token_sort_ratio", "token_set_ratio", "partial_ratio", "w_ratio", "ratio", "norm_ed", "norm_jaro"]
+RAPIDFUZZ_2_NAME_FEATURES = [
+    ("abc", "axbc", 85, 85, 80, 85, 85, 1, 0.9166667),
+    ("abc bcd abc", "bcd abc abc", 100, 100, 85, 95, 81, 4, 0.9090909),
+    ("abc bcd abc", "abc abc xyz", 72, 60, 77, 69, 63, 5, 0.7348485),
+    ("marie van den heuvel", "van den heuvel", 82, 100, 100, 95, 82, 6, 0.7571428),
+    ("van den heuvel bv", "heuvel van den", 90, 100, 69, 95, 51, 14, 0.6897122),
+    ("janssens en zonen", "janssens & zonen nv", 82, 94, 90, 89, 83, 5, 0.8860939),
+    ("a.b.c. nv", "abc nv", 85, 85, 72, 85, 80, 3, 0.8888889),
+    ("ABC Holding", "abc holding", 100, 100, 73, 100, 63, 4, 0.7575758),
+    ("Café De Flore", "cafe de flore", 92, 92, 72, 92, 69, 4, 0.7578347),
+    ("sint-niklaas", "sint niklaas", 100, 100, 91, 100, 91, 1, 0.9444444),
+    ("l'oréal belgium", "loreal belgium", 89, 89, 88, 89, 89, 2, 0.880464),
+    ("brouwerij het anker", "het anker", 64, 100, 100, 90, 64, 10, 0.3849902),
+    ("", "", 100, 0, 100, 0, 100, 0, 0.0),
+    ("", "abc", 0, 0, 0, 0, 0, 3, 0.0),
+    ("abc", "", 0, 0, 0, 0, 0, 3, 0.0),
+    ("...", "...", 100, 0, 100, 0, 100, 0, 1.0),
+    ("  ", "abc", 0, 0, 0, 0, 0, 3, 0.0),
+]
+
+
+@pytest.mark.parametrize(
+    ("feature", "name1", "name2", "expected"),
+    [
+        pytest.param(feature, name1, name2, expected, id=f"{feature}-{name1!r}-{name2!r}")
+        for name1, name2, *values in RAPIDFUZZ_2_NAME_FEATURES
+        for feature, expected in zip(RAPIDFUZZ_2_FEATURES, values)
+    ],
+)
+def test_name_features_match_rapidfuzz_2(feature, name1, name2, expected):
+    func, dtype = PandasFeatureExtractor().name_features[feature]
+    value = np.array([func(name1, name2)]).astype(dtype)[0]
+    assert value == pytest.approx(expected)
+
+
 def test_compute_hits_misses():
     data = compute_vocabulary_features(
         pd.DataFrame({"col1": ["rare foo company"], "col2": ["rare bar company ltd"]}),
