@@ -74,6 +74,9 @@ def levenshtein_distance(name1: str, name2: str) -> int:
 
 
 def jaro_similarity(name1: str, name2: str) -> float:
+    # rapidfuzz 3 returns 1 for two empty names (2.x: 0); an empty pair is not a perfect match.
+    if not name1 and not name2:
+        return 0.0
     return Jaro.similarity(name1, name2)
 
 
