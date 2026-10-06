@@ -19,11 +19,12 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import partial
 from typing import Callable
 
 import pandas as pd
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, utils
 from rapidfuzz.distance import Jaro, Levenshtein
 from sklearn.base import TransformerMixin
 
@@ -45,15 +46,24 @@ from emm.features.features_rank import (
 from emm.features.features_vocabulary import Vocabulary, compute_vocabulary_features, create_vocabulary
 from emm.loggers import Timer
 
+if fuzz.WRatio.__module__ == "rapidfuzz.fuzz_py":
+    warnings.warn(
+        "rapidfuzz is running its pure-Python fallback: name features are slow and differ from the compiled build. "
+        "Install rapidfuzz>=3.9 on a Python version it ships wheels for.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
+
 
 # rapidfuzz>=3 functions are cython functions that cannot be pickled; these module-level
 # wrappers are pickled by reference instead, keeping serialization of trained models working.
+# rapidfuzz 3.0 dropped the default_process processor; it is passed explicitly to keep 2.x feature values.
 def token_sort_ratio(name1: str, name2: str) -> float:
-    return fuzz.token_sort_ratio(name1, name2)
+    return fuzz.token_sort_ratio(name1, name2, processor=utils.default_process)
 
 
 def token_set_ratio(name1: str, name2: str) -> float:
-    return fuzz.token_set_ratio(name1, name2)
+    return fuzz.token_set_ratio(name1, name2, processor=utils.default_process)
 
 
 def partial_ratio(name1: str, name2: str) -> float:
@@ -61,7 +71,15 @@ def partial_ratio(name1: str, name2: str) -> float:
 
 
 def w_ratio(name1: str, name2: str) -> float:
-    return fuzz.WRatio(name1, name2)
+    processed1, processed2 = utils.default_process(name1), utils.default_process(name2)
+    # rapidfuzz 3 uses partial scale 0.9 at a length ratio of exactly 8 (2.x: 0.6); this is WRatio's 0.6 branch.
+    if processed1 and processed2 and max(len(processed1), len(processed2)) == 8 * min(len(processed1), len(processed2)):
+        return max(
+            fuzz.ratio(processed1, processed2),
+            fuzz.partial_ratio(processed1, processed2) * 0.6,
+            fuzz.partial_token_ratio(processed1, processed2, processor=None) * 0.95 * 0.6,
+        )
+    return fuzz.WRatio(processed1, processed2)
 
 
 def ratio(name1: str, name2: str) -> float:
@@ -73,6 +91,9 @@ def levenshtein_distance(name1: str, name2: str) -> int:
 
 
 def jaro_similarity(name1: str, name2: str) -> float:
+    # rapidfuzz 3 returns 1 for two empty names (2.x: 0); an empty pair is not a perfect match.
+    if not name1 and not name2:
+        return 0.0
     return Jaro.similarity(name1, name2)
 
 
