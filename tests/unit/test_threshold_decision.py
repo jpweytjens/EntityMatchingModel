@@ -20,9 +20,19 @@
 import numpy as np
 import pandas as pd
 import pytest
+import sklearn
 
 from emm import PandasEntityMatching
 from emm.threshold.threshold_decision import get_threshold_curves_parameters
+
+# scikit-learn 1.8 changed StratifiedGroupKFold(shuffle=True), so the same random_state puts other accounts in
+# train_test_model's validation fold, which moves the threshold curves of the trained model.
+if tuple(int(part) for part in sklearn.__version__.split(".")[:2]) >= (1, 8):
+    THRESHOLDS_ALL = [0.989411, 0.832099, 0.009229, 0.0]
+    THRESHOLDS_NEGATIVE = [0.060349, 0.0]
+else:
+    THRESHOLDS_ALL = [0.986111, 0.868565, 0.009231, 0.0]
+    THRESHOLDS_NEGATIVE = [0.037389, 0.0]
 
 
 def test_threshold(supervised_model):
@@ -34,7 +44,7 @@ def test_threshold(supervised_model):
 
     # Asking a high value, that is actually giving precision = 1
     threshold1 = emo.calc_threshold(agg_name=agg_name, type_name="positive", metric_name="precision", min_value=0.95)
-    assert threshold1 == pytest.approx(0.86, abs=0.02)
+    assert threshold1 == pytest.approx(THRESHOLDS_ALL[1], abs=0.02)
 
     # Asking an impossible value, that is falling back the maximum precision, that is same threshold as above
     threshold2 = emo.calc_threshold(agg_name=agg_name, type_name="positive", metric_name="precision", min_value=2)
@@ -53,7 +63,7 @@ def test_threshold(supervised_model):
         agg_name=agg_name, type_name="all", metric_name="precision", min_value=0.41
     ) == pytest.approx(0.01639187, abs=0.02)
     assert emo.calc_threshold(agg_name=agg_name, type_name="all", metric_name="TNR", min_value=0.5) == pytest.approx(
-        0.86160237, abs=0.02
+        THRESHOLDS_ALL[1], abs=0.02
     )
     assert emo.calc_threshold(agg_name=agg_name, type_name="all", metric_name="TPR", min_value=0.5) == pytest.approx(
         0.0, abs=0.02
@@ -65,12 +75,12 @@ def test_threshold(supervised_model):
         agg_name=agg_name, type_name="all", metric_name="predicted_matches_rate", min_value=0.5
     ) == pytest.approx(0.0, abs=0.02)
 
-    thresholds_all = np.array([0.986111, 0.868565, 0.009231, 0.0])
+    thresholds_all = np.array(THRESHOLDS_ALL)
     np.testing.assert_allclose(
         thresholds_all, emo.parameters["threshold_curves"][agg_name]["all"]["thresholds"], atol=0.0033
     )
 
-    thresholds_neg = np.array([0.037389, 0.0])
+    thresholds_neg = np.array(THRESHOLDS_NEGATIVE)
     np.testing.assert_allclose(
         thresholds_neg, emo.parameters["threshold_curves"][agg_name]["negative"]["thresholds"], atol=0.0033
     )
