@@ -23,7 +23,7 @@ from functools import partial
 from typing import Callable
 
 import pandas as pd
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, utils
 from rapidfuzz.distance import Jaro, Levenshtein
 from sklearn.base import TransformerMixin
 
@@ -48,12 +48,13 @@ from emm.loggers import Timer
 
 # rapidfuzz>=3 functions are cython functions that cannot be pickled; these module-level
 # wrappers are pickled by reference instead, keeping serialization of trained models working.
+# rapidfuzz 3.0 dropped the default_process processor; it is passed explicitly to keep 2.x feature values.
 def token_sort_ratio(name1: str, name2: str) -> float:
-    return fuzz.token_sort_ratio(name1, name2)
+    return fuzz.token_sort_ratio(name1, name2, processor=utils.default_process)
 
 
 def token_set_ratio(name1: str, name2: str) -> float:
-    return fuzz.token_set_ratio(name1, name2)
+    return fuzz.token_set_ratio(name1, name2, processor=utils.default_process)
 
 
 def partial_ratio(name1: str, name2: str) -> float:
@@ -61,7 +62,7 @@ def partial_ratio(name1: str, name2: str) -> float:
 
 
 def w_ratio(name1: str, name2: str) -> float:
-    return fuzz.WRatio(name1, name2)
+    return fuzz.WRatio(name1, name2, processor=utils.default_process)
 
 
 def ratio(name1: str, name2: str) -> float:
