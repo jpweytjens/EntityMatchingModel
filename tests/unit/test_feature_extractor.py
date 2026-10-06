@@ -172,7 +172,15 @@ def test_name_features_functions(func_name, name1, name2, expected_value):
 
 # Name features as computed by compiled rapidfuzz 2.15.2 (after the dtype cast in calc_name_features);
 # trained models depend on these values, so rapidfuzz 3.x must reproduce them.
-RAPIDFUZZ_2_FEATURES = ["token_sort_ratio", "token_set_ratio", "partial_ratio", "w_ratio", "ratio", "norm_ed", "norm_jaro"]
+RAPIDFUZZ_2_FEATURES = [
+    "token_sort_ratio",
+    "token_set_ratio",
+    "partial_ratio",
+    "w_ratio",
+    "ratio",
+    "norm_ed",
+    "norm_jaro",
+]
 RAPIDFUZZ_2_NAME_FEATURES = [
     ("abc", "axbc", 85, 85, 80, 85, 85, 1, 0.9166667),
     ("abc bcd abc", "bcd abc abc", 100, 100, 85, 95, 81, 4, 0.9090909),
@@ -191,6 +199,9 @@ RAPIDFUZZ_2_NAME_FEATURES = [
     ("abc", "", 0, 0, 0, 0, 0, 3, 0.0),
     ("...", "...", 100, 0, 100, 0, 100, 0, 1.0),
     ("  ", "abc", 0, 0, 0, 0, 0, 3, 0.0),
+    # length ratio of exactly 8: rapidfuzz 3 moved this boundary of WRatio's partial scale
+    ("centrale verwarming novak afgekort c v n", "c v n", 22, 100, 100, 60, 22, 35, 0.575),
+    ("abcdefghijklmnop", "ab", 22, 22, 100, 60, 22, 14, 0.7083333),
 ]
 
 
@@ -206,7 +217,6 @@ def test_name_features_match_rapidfuzz_2(feature, name1, name2, expected):
     func, dtype = PandasFeatureExtractor().name_features[feature]
     value = np.array([func(name1, name2)]).astype(dtype)[0]
     assert value == pytest.approx(expected)
-
 
 
 def test_rapidfuzz_backend_is_compiled():
@@ -229,6 +239,7 @@ def test_pure_python_rapidfuzz_warns():
 def test_compiled_rapidfuzz_does_not_warn():
     result = _import_feature_extractor("cpp")
     assert result.returncode == 0, result.stderr
+
 
 def test_compute_hits_misses():
     data = compute_vocabulary_features(

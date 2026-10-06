@@ -46,7 +46,6 @@ from emm.features.features_rank import (
 from emm.features.features_vocabulary import Vocabulary, compute_vocabulary_features, create_vocabulary
 from emm.loggers import Timer
 
-
 if fuzz.WRatio.__module__ == "rapidfuzz.fuzz_py":
     warnings.warn(
         "rapidfuzz is running its pure-Python fallback: name features are slow and differ from the compiled build. "
@@ -54,6 +53,7 @@ if fuzz.WRatio.__module__ == "rapidfuzz.fuzz_py":
         RuntimeWarning,
         stacklevel=1,
     )
+
 
 # rapidfuzz>=3 functions are cython functions that cannot be pickled; these module-level
 # wrappers are pickled by reference instead, keeping serialization of trained models working.
@@ -71,7 +71,15 @@ def partial_ratio(name1: str, name2: str) -> float:
 
 
 def w_ratio(name1: str, name2: str) -> float:
-    return fuzz.WRatio(name1, name2, processor=utils.default_process)
+    processed1, processed2 = utils.default_process(name1), utils.default_process(name2)
+    # rapidfuzz 3 uses partial scale 0.9 at a length ratio of exactly 8 (2.x: 0.6); this is WRatio's 0.6 branch.
+    if processed1 and processed2 and max(len(processed1), len(processed2)) == 8 * min(len(processed1), len(processed2)):
+        return max(
+            fuzz.ratio(processed1, processed2),
+            fuzz.partial_ratio(processed1, processed2) * 0.6,
+            fuzz.partial_token_ratio(processed1, processed2, processor=None) * 0.95 * 0.6,
+        )
+    return fuzz.WRatio(processed1, processed2)
 
 
 def ratio(name1: str, name2: str) -> float:
