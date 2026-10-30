@@ -20,7 +20,8 @@
 from __future__ import annotations
 
 import re
-from typing import Callable, Match
+from functools import lru_cache
+from typing import Callable, Match, Pattern
 
 import numpy as np
 import pandas as pd
@@ -40,6 +41,8 @@ RE_ABBR_SEPARATOR = re.compile(r"(\s|\.)", re.UNICODE)
 WORD_SPLIT = re.compile(r"\W+", re.UNICODE)
 # WORDS ABBR
 WORDS_ABBR = re.compile(r"[A-Z][a-z]+", re.UNICODE)
+# WORD INITIAL: first character of each word
+WORD_INITIAL = re.compile(r"\b\w", re.UNICODE)
 
 
 def find_abbr_merged_initials(name: str) -> list[str]:
@@ -67,10 +70,15 @@ def extract_abbr_merged_initials(abbr: str, name: str) -> Match | None:
     """Extract possible open form of the given abbreviation if exists
     examples: (SK, Fenerbahce Spor Klubu) => Spor Klubu
     """
+    return merged_initials_regex(abbr.lower()).search(name.lower())
+
+
+@lru_cache(maxsize=2**14)
+def merged_initials_regex(abbr: str) -> Pattern:
     regex = r"\b"
-    for char in abbr.lower():
+    for char in abbr:
         regex += char + r"\w+\s?"
-    return re.search(regex, name.lower(), re.UNICODE)
+    return re.compile(regex, re.UNICODE)
 
 
 def extract_abbr_merged_word_pieces(abbr: str, name: str) -> Match | None:
@@ -99,15 +107,41 @@ def abbr_match(str_with_abbr: str, str_with_open_form: str) -> bool:
     otherwise we apply approximate check:
     all short words (with length from range 2..5) are tested for abbreviation.
     """
-    if any(c.islower() for c in str_with_abbr) and any(c.isupper() for c in str_with_abbr):
+    tokens = short_tokens(str_with_abbr)
+    if tokens is None:
         return original_abbr_match(str_with_abbr, str_with_open_form)
 
-    # extract all words from str_with_abbr
-    # if token is short try if it used as abbrv.
+    # test all short words for abbreviation; the regex is built and run only if it can match
+    open_form, initials = lower_with_word_initials(str_with_open_form)
     return any(
-        2 <= len(token) <= 5 and extract_abbr_merged_initials(token, str_with_open_form) is not None
-        for token in WORD_SPLIT.split(str_with_abbr)
+        token[0] in initials
+        and has_letters_in_order(token, open_form)
+        and merged_initials_regex(token).search(open_form) is not None
+        for token in tokens
     )
+
+
+@lru_cache(maxsize=2**16)
+def short_tokens(name: str) -> tuple[str, ...] | None:
+    """Lower case words with length from range 2..5, or None if `name` contains both upper & lower case characters"""
+    if any(c.islower() for c in name) and any(c.isupper() for c in name):
+        return None
+    return tuple(token.lower() for token in WORD_SPLIT.split(name) if 2 <= len(token) <= 5)
+
+
+@lru_cache(maxsize=2**16)
+def lower_with_word_initials(name: str) -> tuple[str, frozenset[str]]:
+    lower = name.lower()
+    return lower, frozenset(WORD_INITIAL.findall(lower))
+
+
+def has_letters_in_order(token: str, name: str) -> bool:
+    position = 0
+    for char in token:
+        position = name.find(char, position) + 1
+        if position == 0:
+            return False
+    return True
 
 
 def abs_len_diff(name1: str, name2: str) -> int:

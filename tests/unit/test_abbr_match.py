@@ -76,6 +76,20 @@ def test_abbr_match_finds_open_form():
     assert not abbr_match("sk", "asakil")
 
 
+def test_abbr_match_token_length_limits():
+    assert not abbr_match("a", "abc")
+    assert abbr_match("ab", "ax bx")
+    assert abbr_match("abcde", "ax bx cx dx ex")
+    assert not abbr_match("abcdef", "ax bx cx dx ex fx")
+
+
+def test_abbr_match_mixed_case_name_uses_original_method():
+    assert abbr_match("Spor SK", "spor klubu")
+    # lower case token would match, but only the upper case abbreviation of a mixed case name counts
+    assert abbr_match("sk", "spor klubu")
+    assert not abbr_match("Sk x", "spor klubu")
+
+
 def test_token_first_letter_is_always_a_word_character():
     # the pre-check looks the first letter up among word initials, which holds only if \b before it means a word start
     word = re.compile(r"\w", re.UNICODE)
