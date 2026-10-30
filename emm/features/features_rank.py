@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from typing import Callable
 
-import numpy as np
 import pandas as pd
 
 # to reduce effect of numeric errors in scores, before calculating rank features the scores
@@ -32,13 +31,15 @@ RANK_FEATURES_PRECISION = 5
 
 
 def rank(df, c, uid_col):
-    return group_by_uid(df, c, uid_col).apply(
-        lambda x: x.round(RANK_FEATURES_PRECISION).rank(ascending=False, method="first")
-    )
+    return group_by_uid_rounded(df, c, uid_col).rank(ascending=False, method="first")
 
 
 def top2_dist(df, c, uid_col):
-    return group_by_uid(df, c, uid_col).transform(lambda x: ptp(x.nlargest(2)))
+    groups = group_by_uid(df, c, uid_col)
+    second = df[c].where(groups.rank(ascending=False, method="first") == 2)
+    dist = groups.transform("max") - second.groupby(df[uid_col]).transform("max")
+    # NaN if the group has fewer than 2 scores, except that a group of one row with a score has distance 0
+    return dist.mask((groups.transform("size") == 1) & df[c].notna(), 0)
 
 
 def dist_to_max(df, c, uid_col):
@@ -50,15 +51,17 @@ def dist_to_min(df, c, uid_col):
 
 
 def feat_ptp(df, c, uid_col):
-    return group_by_uid(df, c, uid_col).transform(ptp)
+    groups = group_by_uid(df, c, uid_col)
+    # max and min skip NaN, but a group with any NaN has no range
+    return (groups.transform("max") - groups.transform("min")).where(groups.transform("count") == groups.transform("size"))
 
 
 def diff_to_next(df, c, uid_col):
-    return group_by_uid(df, c, uid_col).apply(lambda x: x.round(RANK_FEATURES_PRECISION).diff(1).abs())
+    return group_by_uid_rounded(df, c, uid_col).diff(1).abs()
 
 
 def diff_to_prev(df, c, uid_col):
-    return group_by_uid(df, c, uid_col).apply(lambda x: x.round(RANK_FEATURES_PRECISION).diff(-1))
+    return group_by_uid_rounded(df, c, uid_col).diff(-1)
 
 
 def calc_rank_features(
@@ -102,11 +105,5 @@ def group_by_uid(df, c, uid_col):
     return df.groupby(uid_col, group_keys=False)[c]
 
 
-def ptp(a: np.array):
-    """Numpy `ptp` that is safe if input contains no elements or only NaN.
-
-    Range of values (maximum - minimum) along an axis.
-    """
-    if a is None or len(a) == 0 or np.min(a) is None:
-        return 0
-    return np.ptp(a)
+def group_by_uid_rounded(df, c, uid_col):
+    return df[c].round(RANK_FEATURES_PRECISION).groupby(df[uid_col])
