@@ -20,6 +20,8 @@ from emm.features.features_rank import (
     rank,
     top2_dist,
 )
+from emm.helper.io import load_pickle
+from emm.supervised_model.pandas_supervised_model import PandasSupervisedLayerTransformer
 
 
 def reference_group_by_uid(df, c, uid_col):
@@ -126,11 +128,20 @@ def test_functions_keep_dtype_and_index(function):
     pd.testing.assert_series_equal(function(df, "score", "uid"), reference(df, "score", "uid"), check_exact=True)
 
 
-def test_features_identical_with_duplicate_index():
+def test_functions_align_by_position_with_duplicate_index():
+    # the candidate frame has a unique index, but the functions must not depend on it
     df = frame_from(list(GROUPS.values()), "float32")
-    df.index = np.zeros(len(df), dtype=int)
-    for function, reference in [(top2_dist, reference_top2_dist), (feat_ptp, reference_feat_ptp)]:
-        pd.testing.assert_series_equal(function(df, "score", "uid"), reference(df, "score", "uid"), check_exact=True)
+    duplicated = df.set_axis(np.zeros(len(df), dtype=int))
+    for function in [rank, top2_dist, feat_ptp, diff_to_next, diff_to_prev]:
+        res = function(duplicated, "score", "uid")
+        assert res.index.equals(duplicated.index)
+        np.testing.assert_array_equal(res.to_numpy(), function(df, "score", "uid").to_numpy())
+
+
+def test_features_on_empty_input():
+    df = frame_from([], "float32")
+    assert calc_rank_features(df, funcs=RANK_FEATURES, score_columns=["score"]).empty
+    assert calc_diff_features(df, funcs=DIFF_FEATURES, score_columns=["score"]).empty
 
 
 def test_top2_dist_needs_two_scores_unless_group_has_one_row():
@@ -160,3 +171,24 @@ def test_features_identical_on_random_groups(seed, dtype):
     )
     df.loc[rng.random(n_rows) < rng.choice([0.0, 0.2, 0.8]), "score"] = nan
     assert_rank_and_diff_features_identical(df)
+
+
+def test_nm_score_identical_on_fitted_model(supervised_model):
+    candidates = frame_from(list(GROUPS.values()), "float64").rename(columns={"score": "score_0"})
+    candidates["gt_uid"] = np.arange(len(candidates))
+    for prefix in ["", "gt_"]:
+        candidates[f"{prefix}entity_id"] = np.arange(len(candidates))
+    candidates["name"] = candidates["preprocessed"] = "rare foo company"
+    candidates["gt_name"] = candidates["gt_preprocessed"] = "rare bar company ltd"
+
+    def score(rank_features=None, diff_features=None):
+        sm = load_pickle(supervised_model[2].name, supervised_model[2].parent)
+        feat = sm.named_steps["feat"]
+        # the pickle holds the functions by reference, so it resolves to the current code
+        assert feat.rank_features["top2_dist"] is top2_dist
+        if rank_features is not None:
+            feat.rank_features, feat.diff_features, feat.funcs = rank_features, diff_features, None
+        tr = PandasSupervisedLayerTransformer({"nm_score": {"model": sm, "enable": True}}, return_features=True)
+        return tr.transform(candidates.copy())
+
+    pd.testing.assert_frame_equal(score(), score(REFERENCE_RANK_FEATURES, REFERENCE_DIFF_FEATURES), check_exact=True)
